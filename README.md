@@ -4,6 +4,14 @@
 
 针对金融 Agent 输出做**自动化评测**:输入金融问句,Agent 自动路由到对应的 13 类自研评测 Skill 之一,按"5 步评测协议 + 六档分量表 + 封顶规则 + 根因归因"产出结构化结果,Web 端可视化展示分数趋势、雷达图、根因时间线,并支持 Data Agent 对话式分析。
 
+## 🟢 在线访问
+
+| 端 | URL | 状态 |
+|---|---|---|
+| Backend  | https://fin-evalops-backend.onrender.com | 已部署 · `/api/health` 可访问 |
+| Frontend | https://shuaiwang888.github.io/Fin-EvalOps/ | 待启用 GitHub Pages |
+| Repo     | https://github.com/shuaiwang888/Fin-EvalOps | — |
+
 ## 仓库分区
 
 ```
