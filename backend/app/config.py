@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     dashscope_api_key: str = ""
     deepseek_api_key: str = ""
+    # MiniMax — Anthropic-compatible endpoint exposed at /anthropic path
+    minimax_api_key: str = ""
+    minimax_base_url: str = "https://api.minimaxi.com/anthropic"
 
     # ----- Internal services -----
     iwencai_base_url: str = ""
@@ -86,6 +89,8 @@ class Settings(BaseSettings):
             out.append("dashscope")
         if self.deepseek_api_key:
             out.append("deepseek")
+        if self.minimax_api_key:
+            out.append("minimax")
         return out
 
 

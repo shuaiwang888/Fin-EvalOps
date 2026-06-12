@@ -16,7 +16,9 @@ const FORBIDDEN = [
   { re: /117\.50\.195\.94/, label: "iwencai internal IP" },
   { re: /sk-ant-[A-Za-z0-9_-]{20,}/, label: "Anthropic API key" },
   { re: /sk-[A-Za-z0-9]{40,}/, label: "OpenAI/DeepSeek-style key" },
+  { re: /sk-cp-[A-Za-z0-9_-]{20,}/, label: "MiniMax API key" },
   { re: /\bDASHSCOPE_API_KEY\s*=\s*['"][^'"]+['"]/, label: "DashScope key literal" },
+  { re: /\bMINIMAX_API_KEY\s*=\s*['"][^'"]+['"]/, label: "MiniMax key literal" },
 ];
 
 const EXCLUDE_DIRS = new Set([

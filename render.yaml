@@ -54,6 +54,10 @@ services:
         sync: false
       - key: DEEPSEEK_API_KEY
         sync: false
+      - key: MINIMAX_API_KEY
+        sync: false
+      - key: MINIMAX_BASE_URL
+        value: https://api.minimaxi.com/anthropic
       - key: IWENCAI_BASE_URL
         sync: false
       - key: CORS_ORIGINS

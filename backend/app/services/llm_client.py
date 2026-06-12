@@ -81,6 +81,17 @@ MODELS: Dict[str, ModelSpec] = {
     "deepseek-reasoner": ModelSpec(
         "deepseek-reasoner", "deepseek", "deepseek-reasoner", "DeepSeek Reasoner", 64_000,
     ),
+    # MiniMax — Anthropic-compatible endpoint at /anthropic.
+    # Uses the official Anthropic SDK with a custom base_url + MiniMax API key.
+    # Adjust the `real_model` string if MiniMax renames the model upstream.
+    "minimax-Text-01": ModelSpec(
+        "minimax-Text-01", "minimax", "minimax-Text-01",
+        "MiniMax-Text-01", 64_000,
+    ),
+    "minimax-ABAB5.5s": ModelSpec(
+        "minimax-ABAB5.5s", "minimax", "abab5.5s-chat",
+        "MiniMax-ABAB5.5s", 16_000,
+    ),
 }
 
 
@@ -168,6 +179,12 @@ def call_with_schema(
     t0 = time.perf_counter()
     if spec.provider == "anthropic":
         data, raw, tin, tout = _call_anthropic(spec, system, user_text, schema, tool_name, max_tokens, temperature)
+    elif spec.provider == "minimax":
+        data, raw, tin, tout = _call_anthropic(
+            spec, system, user_text, schema, tool_name, max_tokens, temperature,
+            base_url_override=settings.minimax_base_url or None,
+            api_key_override=settings.minimax_api_key,
+        )
     elif spec.provider == "openai":
         data, raw, tin, tout = _call_openai(spec, system, user_text, schema, tool_name, max_tokens, temperature)
     elif spec.provider == "dashscope":
@@ -196,10 +213,19 @@ def _validate_schema(data: Dict[str, Any], schema: Dict[str, Any]) -> None:
 def _call_anthropic(
     spec: ModelSpec, system: str, user_text: str, schema: dict,
     tool_name: str, max_tokens: int, temperature: float,
+    base_url_override: Optional[str] = None,
+    api_key_override: Optional[str] = None,
 ) -> Tuple[dict, str, int, int]:
     from anthropic import Anthropic
 
-    client = Anthropic(api_key=settings.anthropic_api_key)
+    client_kwargs = {}
+    if api_key_override:
+        client_kwargs["api_key"] = api_key_override
+    else:
+        client_kwargs["api_key"] = settings.anthropic_api_key
+    if base_url_override:
+        client_kwargs["base_url"] = base_url_override
+    client = Anthropic(**client_kwargs)
     resp = client.messages.create(
         model=spec.real_model,
         max_tokens=max_tokens,
@@ -359,10 +385,16 @@ def chat_completion(
     """Non-structured chat — returns text in data['content']."""
     spec = resolve_model(model_id)
     t0 = time.perf_counter()
-    if spec.provider == "anthropic":
+    if spec.provider in ("anthropic", "minimax"):
         from anthropic import Anthropic
 
-        client = Anthropic(api_key=settings.anthropic_api_key)
+        if spec.provider == "minimax":
+            client = Anthropic(
+                api_key=settings.minimax_api_key,
+                base_url=settings.minimax_base_url or None,
+            )
+        else:
+            client = Anthropic(api_key=settings.anthropic_api_key)
         resp = client.messages.create(
             model=spec.real_model,
             max_tokens=max_tokens,
