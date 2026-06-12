@@ -1,0 +1,57 @@
+# Render Blueprint — backend Web Service
+#
+# Set the following ENVIRONMENT VARIABLES in the Render Dashboard
+# (NOT in this file, never commit secrets):
+#   ANTHROPIC_API_KEY
+#   OPENAI_API_KEY
+#   DASHSCOPE_API_KEY
+#   DEEPSEEK_API_KEY
+#   IWENCAI_BASE_URL=https://117.50.195.94:2879
+#   CORS_ORIGINS=https://shuaiwang888.github.io
+services:
+  - type: web
+    name: fin-evalops-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: oregon
+    autoDeploy: true
+    branch: main
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEFAULT_JUDGE_MODEL
+        value: claude-sonnet-4-6
+      - key: IWENCAI_VERIFY_SSL
+        value: "false"
+      # Repo-relative paths (rootDir is backend, so go up one)
+      - key: SKILLS_ROOT
+        value: ../
+      - key: TESTSETS_ROOT
+        value: ../数据测试集
+      - key: DB_PATH
+        value: /var/data/fin_evalops.db
+      # ----- SECRETS — set manually in Render Dashboard -----
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: IWENCAI_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+    disk:
+      name: fin-evalops-data
+      mountPath: /var/data
+      sizeGB: 1

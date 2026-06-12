@@ -1,0 +1,22 @@
+{
+  "来源": "iwencai",
+  "id": "ans_7fa7f083c6dd98cb1ed685f5",
+  "问题": "what is the rsi for soun stock?",
+  "答案": "The latest **RSI for SoundHound AI (SOUN)** is **51.6**, as of **May 8, 2026**.\n\n\n\nWant the RSI for a different date or for a few other high-growth stocks too?",
+  "链路数据": [
+    {
+      "plan": "The user is asking for a simple technical metric on a specific U.S. stock, so I should treat this as an objective data lookup rather than an opinion request. I need to confirm the ticker is SoundHound AI and pull the latest RSI directly. Since this is a single-asset metric request, I should avoid extra analysis and keep the response concise.",
+      "tools": [
+        {
+          "name": "query_financial_data",
+          "input": "{\n  \"query\": \"Stock SOUN: RSI\"\n}",
+          "output": "ID: 1\nQuery:Stock SOUN: RSI\nSimilar Indicator Names: [\"rsi\", \"theme\", \"closing_price\", \"interval\", \"percentage_change\", \"rsi_14\", \"net_fund_flow\", \"pe\"]\nResult:\n1 results found:\n|stock code|stock name|Last Price|Last Change|RSI[20260508]|\n|---|---|---|---|---|\n|SOUN|SoundHound AI|$8.88|-7.79%|51.6|"
+        }
+      ]
+    },
+    {
+      "plan": "I now have the latest RSI value for SOUN, so I should answer with the exact figure and the date it corresponds to. Because the user asked only for RSI, I should not add unsolicited interpretation or broader analysis.",
+      "tools": []
+    }
+  ]
+}

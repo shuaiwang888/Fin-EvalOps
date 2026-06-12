@@ -1,0 +1,18 @@
+{
+  "来源": "iwencai",
+  "id": "ans_02e8bfdaf545d9cc04437404",
+  "问题": "What is a short term trend line",
+  "答案": "A **short-term trend line** is a straight line you draw on a price chart to connect a series of **recent swing highs** or **recent swing lows** in order to identify the **current short-term direction** of the market.\n\n### Simple definition\n- **Uptrend line:** connects rising swing lows.\n- **Downtrend line:** connects falling swing highs.\n\n### Timeframe\nA short-term trend line usually reflects movement over:\n- **days to a few weeks**\n- sometimes **a few months**\n\nIt is **not the same** as a long-term trend line, which shows the bigger-picture direction over many months or years.\n\n### How to use it\n- **Price above an uptrend line** often means short-term momentum is constructive.\n- **Price below a downtrend line** often means short-term pressure is still in control.\n- A **break and hold beyond the trend line** often signals a short-term trend change.\n\n### Practical rule\n- The more times price touches the line and **bounces**, the stronger the trend line usually is.\n- A **clean break** with strong volume usually matters more than a shallow wick through the line.\n\nIf you want, I can draw a quick example on a chart and show you how to use it for entries and stops. Are you looking at a specific stock or ETF?",
+  "链路数据": [
+    {
+      "plan": "The user is asking for a basic technical concept, not a specific asset analysis, so I should give a clear definition rather than market data. I need to explain what a short-term trend line is, distinguish it from long-term trend lines, and briefly cover how to draw and interpret it. Since the user may be a beginner, I should keep it practical and end with a short follow-up question to see whether they want a quick chart example or a deeper technical setup.",
+      "tools": []
+    }
+  ],
+  "上下文": [
+    {
+      "Q": "What is a short term trend line",
+      "A": "A **short-term trend line** is a straight line you draw on a price chart to connect a series of **recent swing highs** or **recent swing lows** in order to identify the **current short-term direction** of the market.\n\n### Simple definition\n- **Uptrend line:** connects rising swing lows.\n- **Downtrend line:** connects falling swing highs.\n\n### Timeframe\nA short-term trend line usually reflects movement over:\n- **days to a few weeks**\n- sometimes **a few months**\n\nIt is **not the same** as a long-term trend line, which shows the bigger-picture direction over many months or years.\n\n### How to use it\n- **Price above an uptrend line** often means short-term momentum is constructive.\n- **Price below a downtrend line** often means short-term pressure is still in control.\n- A **break and hold beyond the trend line** often signals a short-term trend change.\n\n### Practical rule\n- The more times price touches the line and **bounces**, the stronger the trend line usually is.\n- A **clean break** with strong volume usually matters more than a shallow wick through the line.\n\nIf you want, I can draw a quick example on a chart and show you how to use it for entries and stops. Are you looking at a specific stock or ETF?"
+    }
+  ]
+}

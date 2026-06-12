@@ -1,0 +1,381 @@
+{
+  "schema_version": "event-concept-stock-selection/v3",
+  "source": {
+    "platform": "iwencai",
+    "sample_id": "ans_1f1a49cdf85e72ab31ca2345",
+    "source_file": "概念选股测试集.json",
+    "question": "现在大族激光涨了，下一步还有哪些产业链上的股票会涨"
+  },
+  "weight_assignment": {
+    "intent_fulfillment": {
+      "dynamic_weight": 20,
+      "applicability": "relevant",
+      "rationale": "始终 relevant；用户明确要求选股并隐含排序"
+    },
+    "event_abstraction": {
+      "dynamic_weight": 15,
+      "applicability": "relevant",
+      "rationale": "'大族激光涨了'是事件触发；需抽象产业链情绪加速段背后的真实驱动"
+    },
+    "industry_mapping": {
+      "dynamic_weight": 15,
+      "applicability": "relevant",
+      "rationale": "用户明确要求'产业链上的股票'，需做产业链层级与受益纯度划分（上调自基准 10）"
+    },
+    "ranking_judgment": {
+      "dynamic_weight": 15,
+      "applicability": "relevant",
+      "rationale": "用户问'哪些会涨'+'下一步'，隐含优先级判断"
+    },
+    "logic_closure": {
+      "dynamic_weight": 15,
+      "applicability": "relevant",
+      "rationale": "始终 relevant；需要事件→传导→个股的完整逻辑链"
+    },
+    "timeliness_fact_boundary": {
+      "dynamic_weight": 10,
+      "applicability": "relevant",
+      "rationale": "'现在'/'涨了'是时效触发，扩散方向与近期催化时点强相关"
+    },
+    "credibility_expression": {
+      "dynamic_weight": 5,
+      "applicability": "supplementary",
+      "rationale": "始终 supplementary；表达质量有参考价值"
+    },
+    "tool_usage": {
+      "dynamic_weight": 5,
+      "applicability": "relevant",
+      "rationale": "始终 relevant；本题工具组合相对清晰（下调自基准 10）"
+    }
+  },
+  "skipped_dimensions": [],
+  "matched_golden_cases": [
+    {
+      "case_id": "Case 9",
+      "name": "蓝箭航天上市——关联公司受益排序",
+      "relevance": "类比结构：单一事件触发→关联公司受益排序",
+      "hard_checks_used": [
+        "按受益强度排序关联公司，区分直接参股、供应链合作、概念关联",
+        "应分析股价上市前后的表现趋势"
+      ]
+    },
+    {
+      "case_id": "Case 27",
+      "name": "长征十号乙首飞利好商业航天",
+      "relevance": "事件贴合度+排序优先级的同源问题",
+      "hard_checks_used": [
+        "必须先看事件相关度和受益纯度，再看资金流、弹性、换手等行情辅助指标",
+        "过度依赖行情片面指标来选事件标的，是本末倒置"
+      ]
+    },
+    {
+      "case_id": "image_annotation_anchor_1",
+      "name": "关键结论优先，过程透明不能挤占主逻辑",
+      "relevance": "用户更关心'谁最相关、为什么、怎么排'",
+      "hard_checks_used": [
+        "主题命中数量、市值排序、概念标签数量不能直接等同于受益强度"
+      ]
+    },
+    {
+      "case_id": "image_annotation_anchor_4",
+      "name": "交易语境要补'性价比'，但先看题材贴合",
+      "relevance": "用户问'会涨'隐含交易维度",
+      "hard_checks_used": [
+        "事件炒作顺序：事件贴合度/受益纯度/赚钱效应复制 → 资金与技术面"
+      ]
+    }
+  ],
+  "dimension_scores": {
+    "intent_fulfillment": {
+      "raw_score": 80,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer",
+          "summary": "答案分4条扩散主线（消费电子/PCB、新能源、激光雷达、上游材料）回应'哪些产业链股票会涨'，并附'实操清单'和反问引导，覆盖用户决策需要"
+        },
+        {
+          "source": "question",
+          "pointer": "question",
+          "summary": "用户问'哪些会涨'是核心意图；'下一步'隐含排序。答案给出了方向但未给出'哪只最优先盯'的明确判断"
+        }
+      ]
+    },
+    "event_abstraction": {
+      "raw_score": 80,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.1",
+          "summary": "明确识别'产业链情绪加速段'、'当日资金净流出 -1.47亿元'、'短线分歧加大'的事件性质"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "提出'下游应用扩散+上游材料/零部件补涨'两条扩散主线，事件抽象到可投资主题"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2.C",
+          "summary": "激光雷达方向提取了禾赛6D全彩平台、华为乾崑896线双光路、Innoviz 1公里级等具体催化点"
+        }
+      ]
+    },
+    "industry_mapping": {
+      "raw_score": 70,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "给出4条扩散主线（消费电子/PCB链路、新能源、激光雷达、上游材料），产业链方向清晰"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "未在产业链层级上明确核心/次核心/边缘受益，例如华工科技（设备+多题材）与德龙激光（半导体隐切）谁更核心未做对比"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "对10只代表标的中仅3-4只说明产业链位置（华工/德龙/锐科/禾赛），其余6只仅在表格中"
+        }
+      ]
+    },
+    "ranking_judgment": {
+      "raw_score": 60,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "仅给出主题分组（4条主线）而非'最可能涨→一般'的排序，缺少'核心/次核心/边缘'或'第一梯队/第二梯队'的梯队划分"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "10只股票按'个股热度'展示（华工86万 > 大族78万 > 锐科7.8万…），但热度≠'涨的可能性'，未按受益纯度或事件贴合度排序"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.4",
+          "summary": "实操清单'先盯热度→再看资金→最后看催化'是方法论，不是具体股票的优先级"
+        }
+      ]
+    },
+    "logic_closure": {
+      "raw_score": 70,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.1→2",
+          "summary": "逻辑链'大族激光情绪加速+资金净流出→下游/上游扩散→4条主线方向'基本完整"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "华工科技（资金-5.92亿+多题材）、德龙激光（半导体隐切+弹性）、锐科激光（光纤激光+销量+年报）有具体个股论述"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "10只标的中6只（杰普特、光韵达、金运激光、英诺激光、联赢激光、海目星）仅出现在表格中，缺少独立投资逻辑，深度不均"
+        }
+      ]
+    },
+    "timeliness_fact_boundary": {
+      "raw_score": 80,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.1",
+          "summary": "明确锚定2026-04-24数据时点（涨幅排名90、热度78.87万、资金-1.47亿），与用户'现在/涨了'的时效需求对齐"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "催化点时间一致：华为896线（2026-04-23）、禾赛6D全彩（2026-04-17）、锐科年报（2026-04-22）、慕尼黑光博会（2026-04）"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "股票代码、名称、market_code、热度、资金流向数据与FinQuery输出一致，无明显事实错误"
+        }
+      ]
+    },
+    "credibility_expression": {
+      "raw_score": 60,
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "表格中'所属概念'、'纳入概念原因'、'主营产品'3个关键字段为空，10只股票表格接近纯数据罗列，信息密度低"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "主要断言有数据支撑：'资金-1.47亿元'、'热度78.87万'、'阶段涨幅65.11%'，表述直接"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.4",
+          "summary": "实操清单语言清晰可执行，但'防冲高回落'、'题材多波动大'等风险提示略显套话"
+        }
+      ]
+    },
+    "tool_usage": {
+      "raw_score": 80,
+      "evidence": [
+        {
+          "source": "function_call",
+          "pointer": "chain[0].tools[0]",
+          "summary": "Plan 1 用 FinQuery 拉大族激光行情/资金/热度，工具选择正确"
+        },
+        {
+          "source": "function_call",
+          "pointer": "chain[0].tools[1]",
+          "summary": "Plan 1 用 Search 检索产业链催化，关键词控制在5个以内"
+        },
+        {
+          "source": "function_call",
+          "pointer": "chain[1].tools[0]",
+          "summary": "Plan 2 第一次 FinQuery 拉'激光产业链股票'返回0条，主动改换口径（核心论点）"
+        },
+        {
+          "source": "function_call",
+          "pointer": "chain[1].tools",
+          "summary": "Plan 2 用 3 轮 Search + 1 轮 FinQuery 并行补足证据，体现工具组合能力"
+        },
+        {
+          "source": "function_call",
+          "pointer": "chain[1].tools[2].input",
+          "summary": "Search 关键词中'催化订单展会政策'等用词偏松散，未使用'新闻'后缀（次要瑕疵）"
+        }
+      ]
+    }
+  },
+  "caps": [
+    {
+      "rule_id": "hard_time_or_fact_error",
+      "triggered": false,
+      "score_ceiling": 40,
+      "reason": "时点（2026-04-24）、代码、催化时间窗口均一致，无明显时间/事实错误"
+    },
+    {
+      "rule_id": "missing_required_ranking",
+      "triggered": false,
+      "score_ceiling": 60,
+      "reason": "用户问'哪些会涨'+'下一步'隐含排序，但未使用'排序/从最利好到一般'等强措辞；答案提供了主题分组（A/B/C/4）+ 实操清单的'分级'组织，未达触发门槛"
+    },
+    {
+      "rule_id": "data_dump_without_core_rationale",
+      "triggered": false,
+      "score_ceiling": 55,
+      "reason": "排除条件适用：表格附有题材逻辑解读和个股推理（华工/德龙/锐科/禾赛均有论述），数据服务于投资论点"
+    },
+    {
+      "rule_id": "wrong_evidence_type",
+      "triggered": false,
+      "score_ceiling": 50,
+      "reason": "证据类型匹配：FinQuery 处理结构化金融数据，Search 处理产业链/催化资讯"
+    },
+    {
+      "rule_id": "unverifiable_subjective_expression",
+      "triggered": false,
+      "score_ceiling": 65,
+      "reason": "核心断言（资金-1.47亿、热度78.87万、阶段涨幅65.11%）有数据支撑；未出现'市场普遍认为'/'有望受益'等无依据断言"
+    },
+    {
+      "rule_id": "forced_mapping_or_entity_boundary_error",
+      "triggered": false,
+      "score_ceiling": 50,
+      "reason": "无海外映射或强行凑相似；产业链归属清晰"
+    }
+  ],
+  "root_causes": [
+    {
+      "l1": "reasoning",
+      "l2": "purity-tiering-missing",
+      "dimension": "ranking_judgment",
+      "raw_score": 60,
+      "confidence": "high",
+      "summary": "答案按主题分组（消费电子/PCB、新能源、激光雷达、上游材料）给出4条扩散主线，但未在组内或整体上做梯队划分（核心/次核心/边缘），表格按'个股热度'展示而非'涨的可能性'排序，未回应用户'下一步'隐含的优先级需求",
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "4条主线分组清晰但缺少核心/边缘/梯队标注"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "10只股票按热度展示（86万>78万>7.8万>…），与'涨的可能性'无强对应"
+        },
+        {
+          "source": "question",
+          "pointer": "question",
+          "summary": "用户问'哪些会涨'+'下一步'隐含排序需求，未被显式回应"
+        }
+      ]
+    },
+    {
+      "l1": "composition",
+      "l2": "data-dumping",
+      "dimension": "credibility_expression",
+      "raw_score": 60,
+      "confidence": "medium",
+      "summary": "10只股票表格中'所属概念'、'纳入概念原因'、'主营产品'3个关键字段为空，导致表格接近纯数据罗列；缺少非标产业事实（主营业务深度、订单/客户/产业链位置）补强可读性，与典型 data-dumping 模式高度一致",
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "3个核心字段（所属概念/纳入概念原因/主营产品）全部为空"
+        },
+        {
+          "source": "function_call_output",
+          "pointer": "chain[1].tools[2].output",
+          "summary": "FinQuery 实际返回了完整的所属概念和主营产品数据，但答案未渲染到表格中"
+        }
+      ]
+    },
+    {
+      "l1": "reasoning",
+      "l2": "quant-link-missing",
+      "dimension": "logic_closure",
+      "raw_score": 70,
+      "confidence": "medium",
+      "summary": "10只标的中仅华工科技、德龙激光、锐科激光、禾赛科技、华为相关链有具体论述，其余6只（杰普特、光韵达、金运激光、英诺激光、联赢激光、海目星）仅在表格中出现，缺少独立投资逻辑和数据→论点的推理链",
+      "evidence": [
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.section.2",
+          "summary": "仅3-4只股票有具体个股论述（华工/德龙/锐科/禾赛/华为相关）"
+        },
+        {
+          "source": "final_answer",
+          "pointer": "text_answer.表格",
+          "summary": "10只中6只（杰普特、光韵达、金运、英诺、联赢、海目星）无独立投资逻辑"
+        }
+      ]
+    }
+  ],
+  "narrative_review": {
+    "summary": "该样本在事件抽象（识别产业链情绪加速段+资金净流出）和工具使用（双工具组合+0条结果应对策略）上表现较好，准确把握了'大族激光涨了'的事件触发+产业链扩散的主题。但核心不足在于排序与梯队——答案按4个主题分组给出了扩散方向，但未在主题内做'核心/次核心/边缘'分层，10只股票按'个股热度'展示而非按'涨的可能性'排序，未充分回应用户'下一步'隐含的优先级判断。此外，10只股票表格中'所属概念'/'纳入概念原因'/'主营产品'3个关键字段为空（FinQuery 实际已返回完整数据但未渲染），接近数据堆砌；且10只中6只缺少独立个股逻辑，深度不均。整体属于'方向对+组织清+缺梯队+深度不均'的答案。",
+    "strengths": [
+      "事件抽象度好：准确识别'情绪加速+资金净流出+短线分歧'，推导'下游扩散+上游补涨'两条主线",
+      "工具策略稳健：FinQuery + Search 组合合理，对0条返回主动改换口径，并行多路 Search 补足",
+      "时效处理严格：数据锚定2026-04-24，与近期催化（华为896线/禾赛6D/慕尼黑光博会/锐科年报）时间窗口一致",
+      "方向完整：4条扩散主线 + 实操清单 + 反问引导，覆盖了用户决策需要"
+    ],
+    "weaknesses": [
+      "缺少梯队划分：4个主题分组清晰但组内无'核心/次核心/边缘'排序，10只股票按热度展示而非'涨的可能性'排序",
+      "表格信息密度低：'所属概念'/'纳入概念原因'/'主营产品'3个关键字段为空，10只中6只仅在表格中无独立论述",
+      "深度不均：华工/德龙/锐科/禾赛/华为相关有具体论述，杰普特/光韵达/金运/英诺/联赢/海目星仅表格罗列",
+      "缺少交易性价比：作为'下一步哪些会涨'的排序题，未补充市值/营收比/筹码结构/弹性等交易维度"
+    ],
+    "next_actions": [
+      "产品侧：在答案生成时，对 FinQuery 返回的'所属概念'/'主营产品'等关键字段做完整性检查，避免渲染丢字段",
+      "算法侧：训练数据中补充'主题分组+梯队划分+核心/边缘标签'的答案模式，针对'哪些会涨/下一步'类排序需求输出明确优先级",
+      "算法侧：对10只以上标的的答案，强制要求每只至少有1句'题材贴合+受益逻辑'的独立论述（而非仅表格罗列）",
+      "产品侧：在意图识别中识别'哪些会涨+下一步'隐含的排序需求，主动触发排序生成而非仅做主题分组"
+    ]
+  }
+}
