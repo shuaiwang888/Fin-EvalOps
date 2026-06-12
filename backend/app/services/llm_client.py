@@ -244,6 +244,21 @@ def _call_anthropic(
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
             return block.input, json.dumps(block.input, ensure_ascii=False), tin, tout
+    # Fallback: many Anthropic-compatible APIs (e.g. minimax) put JSON in
+    # a text block instead of honouring tool_use. Try to extract JSON from
+    # any text block and validate against the schema.
+    for block in resp.content:
+        if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip():
+            try:
+                parsed = _extract_json(block.text)
+                _validate_schema(parsed, schema)
+                log.info(
+                    "Provider %s returned JSON in text block (no tool_use); recovered.",
+                    spec.provider,
+                )
+                return parsed, block.text, tin, tout
+            except (LLMError, SchemaValidationError):
+                continue
     raw = json.dumps([b.model_dump() if hasattr(b, "model_dump") else str(b) for b in resp.content])
     raise LLMError(f"Anthropic returned no tool_use block: {raw[:300]}")
 
