@@ -51,6 +51,8 @@ export default function Runs() {
   const [filters, setFilters] = useState<any>({
     page: 1, page_size: 20,
     testcase_id: presetTcId,
+    sort: "created_at",
+    order: "desc",
   });
   const key = `/api/runs?${JSON.stringify(filters)}`;
   const { data, isLoading, mutate } = useSWR(key, () => runsApi.list(filters), {
@@ -93,6 +95,23 @@ export default function Runs() {
             value={filters.skill_id}
             onChange={(v) => setFilters((f: any) => ({ ...f, skill_id: v, page: 1 }))}
             options={(skills || []).map((s) => ({ value: s.id, label: `${s.code} · ${s.name_zh}` }))}
+          />
+          <Select
+            placeholder="排序"
+            style={{ width: 160 }}
+            value={`${filters.sort}|${filters.order}`}
+            onChange={(v) => {
+              const [sort, order] = v.split("|");
+              setFilters((f: any) => ({ ...f, sort, order, page: 1 }));
+            }}
+            options={[
+              { value: "created_at|desc", label: "最新优先" },
+              { value: "created_at|asc", label: "最早优先" },
+              { value: "final_score|asc", label: "分低优先" },
+              { value: "final_score|desc", label: "分高优先" },
+              { value: "latency_ms|desc", label: "耗时最长" },
+              { value: "tokens_in|desc", label: "Tokens 最多" },
+            ]}
           />
           <ModelPicker
             value={filters.judge_model}

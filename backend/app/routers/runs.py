@@ -63,7 +63,8 @@ def create_run(body: RunCreate, bg: BackgroundTasks, db: Session = Depends(get_d
         raise HTTPException(404, f"TestCase {body.testcase_id} not found")
 
     skill_id = body.skill_id
-    routing_meta = None
+    routing_meta: dict | None = None
+    # Only auto-route when the user did not specify a skill_id
     if not skill_id:
         r = skill_router.route(tc.question, judge_model=body.judge_model)
         skill_id = r.skill_id
@@ -104,8 +105,11 @@ def create_run(body: RunCreate, bg: BackgroundTasks, db: Session = Depends(get_d
 # ----------------------------------------------------------------------------
 @router.post("/runs/batch", response_model=RunBatchOut, status_code=201)
 def create_batch(body: RunBatchCreate, bg: BackgroundTasks, db: Session = Depends(get_db)):
-    if body.skill_strategy == "manual" and not body.skill_id:
-        raise HTTPException(400, "skill_id required when strategy=manual")
+    if body.skill_strategy == "manual":
+        if not body.skill_id:
+            raise HTTPException(400, "skill_id required when strategy=manual")
+        if not db.get(Skill, body.skill_id):
+            raise HTTPException(400, f"Skill {body.skill_id} not found")
     spec = llm_client.resolve_model(body.judge_model)
 
     batch = RunBatch(
@@ -158,6 +162,20 @@ def create_batch(body: RunBatchCreate, bg: BackgroundTasks, db: Session = Depend
 # ----------------------------------------------------------------------------
 # List & filter
 # ----------------------------------------------------------------------------
+# Allow-list of columns that can be used as sort keys, mapped to ORM column
+# objects. Prevents arbitrary `?sort=` injection.
+_SORT_COLUMNS = {
+    "created_at": Run.created_at,
+    "finished_at": Run.finished_at,
+    "final_score": Run.final_score,
+    "latency_ms": Run.latency_ms,
+    "tokens_in": Run.tokens_in,
+    "status": Run.status,
+    "skill_id": Run.skill_id,
+    "judge_model": Run.judge_model,
+}
+
+
 @router.get("/runs", response_model=dict)
 def list_runs(
     status: Optional[str] = Query(None),
@@ -165,6 +183,8 @@ def list_runs(
     judge_model: Optional[str] = Query(None),
     testcase_id: Optional[str] = Query(None),
     batch_id: Optional[str] = Query(None),
+    sort: str = Query("created_at", description="Sort column; must be in allow-list"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -180,10 +200,15 @@ def list_runs(
         q = q.filter(Run.testcase_id == testcase_id)
     if batch_id:
         q = q.filter(Run.batch_id == batch_id)
+    if sort not in _SORT_COLUMNS:
+        raise HTTPException(400, f"sort must be one of: {sorted(_SORT_COLUMNS)}")
+    sort_col = _SORT_COLUMNS[sort]
+    sort_col = sort_col.desc() if order == "desc" else sort_col.asc()
+    # Always tie-break by created_at desc so paginated results are stable.
+    q = q.order_by(sort_col, Run.created_at.desc())
     total = q.with_entities(func.count(Run.id)).scalar() or 0
     rows = (
-        q.order_by(Run.created_at.desc())
-        .offset((page - 1) * page_size)
+        q.offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )

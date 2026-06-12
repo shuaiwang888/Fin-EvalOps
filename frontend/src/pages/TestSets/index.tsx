@@ -50,6 +50,7 @@ export default function TestSets() {
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showIwencai, setShowIwencai] = useState(false);
+  const [importCat, setImportCat] = useState<string | undefined>();
   const [createForm] = Form.useForm();
   const [iwencaiForm] = Form.useForm();
 
@@ -266,23 +267,23 @@ export default function TestSets() {
           <Form.Item label="目标分类" required>
             <Select
               placeholder="选择分类"
-              id="import-cat"
+              value={importCat}
               options={(categories || []).map((c) => ({ value: c.code, label: `${c.code} · ${c.name_zh}` }))}
-              onChange={(v) => ((window as any).__importCat = v)}
+              onChange={setImportCat}
             />
           </Form.Item>
           <Upload
             accept=".json"
             beforeUpload={async (file) => {
-              const cat = (window as any).__importCat;
-              if (!cat) {
+              if (!importCat) {
                 message.warning("请先选择分类");
                 return false;
               }
               try {
-                const r = await testsetsApi.importFile(file as File, cat);
+                const r = await testsetsApi.importFile(file as File, importCat);
                 message.success(`已导入 ${r.inserted}/${r.total_in_file}`);
                 setShowImport(false);
+                setImportCat(undefined);
                 mutate();
               } catch {
                 /* axios interceptor already shows error */

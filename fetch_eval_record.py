@@ -227,6 +227,19 @@ def output_filename(record: dict, record_id: str) -> str:
     return f"{prefix}_{qhash}.json"
 
 
+def _read_back_record(out_dir: str, record_id: str) -> dict | None:
+    """Locate the just-written JSON file for `record_id` and return its dict.
+
+    We can't compute the exact filename without re-parsing the question, so we
+    fall back to a glob on the md5 prefix which is unique to the record_id.
+    """
+    qhash = hashlib.md5(record_id.encode("utf-8")).hexdigest()[:8]
+    matches = list(Path(out_dir).glob(f"*_{qhash}.json"))
+    if not matches:
+        return None
+    return json.loads(matches[0].read_text(encoding="utf-8"))
+
+
 # ---------------------- 批量输入 ----------------------
 def read_ids_from_stdin() -> list[str]:
     return [line.strip() for line in sys.stdin if line.strip() and not line.strip().startswith("#")]
@@ -329,11 +342,11 @@ def main():
         ok, msg = process_one(rid, args)
         if ok:
             print(f"   ✅ {msg}")
-            # 重新读回用于合并
+            # Read back the just-written file (no extra HTTP call)
             try:
-                fn = Path(args.out_dir) / output_filename(parse_record(fetch_html(rid, args.base_url, args.timeout, insecure=not args.secure)), rid)
-                if fn.exists():
-                    ok_records.append(json.loads(fn.read_text(encoding="utf-8")))
+                record = _read_back_record(args.out_dir, rid)
+                if record is not None:
+                    ok_records.append(record)
                     ok_ids.append(rid)
             except Exception:
                 pass

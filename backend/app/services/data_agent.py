@@ -81,19 +81,32 @@ AGENT_SCHEMA = {
 }
 
 
-# Forbidden tokens (case-insensitive whole-word check)
+# Forbidden tokens (case-insensitive whole-word check).
+# `detach` and `reindex`/`analyze` are added because SQLite treats them as
+# side-effecting without going through `DROP`/`CREATE`.
 _FORBIDDEN = re.compile(
-    r"\b(insert|update|delete|drop|truncate|alter|create|attach|pragma|vacuum|replace)\b",
+    r"\b(insert|update|delete|drop|truncate|alter|create|attach|detach|"
+    r"pragma|vacuum|replace|reindex|analyze|load|savepoint|release)\b",
     re.IGNORECASE,
 )
 
 
+# Cache the read-only engine so we don't recreate the pool on every query.
+_ro_engine: Engine | None = None
+_ro_engine_uri: str | None = None
+
+
 def _read_only_engine() -> Engine:
-    """SQLite engine opened in read-only mode."""
+    """SQLite engine opened in read-only mode (cached)."""
+    global _ro_engine, _ro_engine_uri
     path = settings.db_path_abs
-    # SQLAlchemy + SQLite read-only via URI
     uri = f"sqlite:///file:{path}?mode=ro&uri=true"
-    return create_engine(uri, future=True, connect_args={"uri": True, "check_same_thread": False})
+    if _ro_engine is None or _ro_engine_uri != uri:
+        _ro_engine = create_engine(
+            uri, future=True, connect_args={"uri": True, "check_same_thread": False}
+        )
+        _ro_engine_uri = uri
+    return _ro_engine
 
 
 def _execute_sql(sql: str, row_cap: int = 200) -> List[Dict[str, Any]]:

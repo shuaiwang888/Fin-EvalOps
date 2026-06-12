@@ -25,7 +25,7 @@ export const testsetsApi = {
         page: number;
         page_size: number;
         items: TestCaseBrief[];
-      }>("/api/testsets", { params })
+      }>("/api/testsets", { params, silent: true })
       .then((r) => r.data),
 
   get: (id: string) =>

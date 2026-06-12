@@ -94,13 +94,6 @@ class TestCaseUpdate(BaseModel):
     tags: Optional[List[str]] = None
 
 
-class TestCaseImportRaw(BaseModel):
-    """Raw json from 数据测试集 — Chinese keys."""
-    raw: Any
-    category_code: str
-    file_path: Optional[str] = None
-
-
 class IwencaiImportRequest(BaseModel):
     record_ids: List[str] = Field(default_factory=list, max_length=200)
     category_code: str

@@ -21,6 +21,16 @@ export const modelsApi = {
       .then((r) => r.data.models),
 };
 
+export type RunSortKey =
+  | "created_at"
+  | "finished_at"
+  | "final_score"
+  | "latency_ms"
+  | "tokens_in"
+  | "status"
+  | "skill_id"
+  | "judge_model";
+
 export const runsApi = {
   list: (params: {
     status?: string;
@@ -28,16 +38,21 @@ export const runsApi = {
     judge_model?: string;
     testcase_id?: string;
     batch_id?: string;
+    sort?: RunSortKey;
+    order?: "asc" | "desc";
     page?: number;
     page_size?: number;
   } = {}) =>
     http
       .get<{ total: number; page: number; page_size: number; items: RunBrief[] }>(
         "/api/runs",
-        { params }
+        { params, silent: true }
       )
       .then((r) => r.data),
-  get: (id: string) => http.get<RunDetail>(`/api/runs/${id}`).then((r) => r.data),
+  get: (id: string) =>
+    http
+      .get<RunDetail>(`/api/runs/${id}`, { silent: true })
+      .then((r) => r.data),
   create: (body: { testcase_id: string; skill_id?: string; judge_model?: string }) =>
     http.post<RunBrief>("/api/runs", body).then((r) => r.data),
   rerun: (id: string) =>
@@ -50,5 +65,5 @@ export const runsApi = {
     label?: string;
   }) => http.post<RunBatchOut>("/api/runs/batch", body).then((r) => r.data),
   listBatches: () =>
-    http.get<RunBatchOut[]>("/api/runs/batches").then((r) => r.data),
+    http.get<RunBatchOut[]>("/api/runs/batches", { silent: true }).then((r) => r.data),
 };

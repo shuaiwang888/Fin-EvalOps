@@ -108,8 +108,9 @@ def route(
     top1_code, top1_score = sorted_codes[0]
     top1 = code_to_record.get(top1_code)
 
-    # 1. LLM-based decision (preferred)
-    if use_llm and judge_model is not None or use_llm and llm_client.list_models():
+    # 1. LLM-based decision (preferred when available and not opted-out)
+    has_llm = bool(llm_client.list_models())
+    if use_llm and has_llm:
         try:
             return _llm_route(question, self_skills, judge_model)
         except Exception as exc:

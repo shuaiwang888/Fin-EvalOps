@@ -73,9 +73,20 @@ export default function Agent() {
     if (!sid) {
       const s = await agentApi.createSession(model);
       refreshSessions();
-      setSid(s.id);
-      // wait for state update; quick path: re-fire on next tick
-      setTimeout(() => send(content), 100);
+      // Send directly using the freshly-created session id; avoids racing the
+      // setSid state update + stale closure on `content`.
+      setInput("");
+      setSending(true);
+      try {
+        await agentApi.sendMessage(s.id, content, model);
+        refreshSessions();
+      } catch (err) {
+        message.error("发送失败,请重试");
+      } finally {
+        setSending(false);
+        // Refresh once so the new session appears selected
+        setTimeout(() => setSid(s.id), 0);
+      }
       return;
     }
     setInput("");

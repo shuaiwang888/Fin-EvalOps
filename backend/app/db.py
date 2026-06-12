@@ -79,7 +79,7 @@ def db_session() -> Iterator[Session]:
 
 
 def init_db() -> None:
-    """Create tables if not exist. Used in dev; production uses alembic."""
+    """Create tables if not exist. Runs on every boot; safe + idempotent."""
     from . import models  # noqa: F401 ensure models imported
 
     Base.metadata.create_all(bind=engine)

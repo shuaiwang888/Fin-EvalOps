@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import sys
 from contextvars import ContextVar
-from typing import Any
 
 _trace_id: ContextVar[str] = ContextVar("trace_id", default="-")
 
@@ -44,9 +43,3 @@ def set_trace_id(trace: str) -> None:
 
 def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
-
-
-def safe_dump(obj: Any, max_len: int = 500) -> str:
-    """Truncate object repr for log lines."""
-    s = repr(obj)
-    return s if len(s) <= max_len else s[:max_len] + f"...<truncated {len(s) - max_len}b>"

@@ -1,4 +1,5 @@
-import { Card, Col, Row, Statistic, Table, Tag, Empty, Space, Alert } from "antd";
+import { useState } from "react";
+import { Card, Col, Row, Statistic, Table, Tag, Empty, Space, Alert, Select } from "antd";
 import {
   ExperimentOutlined,
   DatabaseOutlined,
@@ -14,7 +15,14 @@ import { dashboardApi } from "../../api/dashboard";
 import { PALETTE, scoreBand } from "../../theme";
 import type { TopFailureRow } from "../../api/types";
 
+const TREND_DAYS_OPTIONS = [
+  { value: 7, label: "近 7 天" },
+  { value: 30, label: "近 30 天" },
+  { value: 90, label: "近 90 天" },
+];
+
 export default function Dashboard() {
+  const [days, setDays] = useState(30);
   const { data: summary } = useSWR("/api/dashboard/summary", dashboardApi.summary, {
     refreshInterval: 30_000,
   });
@@ -23,8 +31,8 @@ export default function Dashboard() {
     dashboardApi.skillCoverage
   );
   const { data: trend } = useSWR(
-    "/api/dashboard/trend?days=30",
-    () => dashboardApi.trend(30)
+    `/api/dashboard/trend?days=${days}`,
+    () => dashboardApi.trend(days)
   );
   const { data: failures } = useSWR(
     "/api/dashboard/top-failures",
@@ -173,7 +181,18 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      <Card title="30 天分数趋势(按 Skill)">
+      <Card
+        title="分数趋势(按 Skill)"
+        extra={
+          <Select
+            size="small"
+            value={days}
+            onChange={setDays}
+            options={TREND_DAYS_OPTIONS}
+            style={{ width: 120 }}
+          />
+        }
+      >
         {(trend?.length || 0) > 0 ? (
           <ReactECharts option={trendOption} style={{ height: 280 }} notMerge />
         ) : (

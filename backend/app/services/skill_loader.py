@@ -222,8 +222,14 @@ class SkillLoader:
         if not skill_md.exists():
             log.warning("SKILL_zh.md missing in %s", path)
             return None
+        try:
+            post = frontmatter.load(skill_md)
+        except Exception as exc:
+            # Bad frontmatter / encoding / EOF — don't let one broken skill
+            # brick the whole scan.
+            log.warning("Skipping skill %s — frontmatter parse failed: %s", path, exc)
+            return None
 
-        post = frontmatter.load(skill_md)
         name_en = (post.metadata.get("name") or "").strip()
         description = (post.metadata.get("description") or "").strip()
         body = post.content

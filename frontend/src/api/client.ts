@@ -1,4 +1,4 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { message } from "antd";
 
 // Base URL resolution:
@@ -12,6 +12,18 @@ export const http = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+// Augment Axios config with our custom flag. Components that don't want the
+// global error toast (e.g. background polling) can pass `silent: true` per
+// request.
+declare module "axios" {
+  export interface InternalAxiosRequestConfig {
+    silent?: boolean;
+  }
+  export interface AxiosRequestConfig {
+    silent?: boolean;
+  }
+}
+
 http.interceptors.response.use(
   (resp) => resp,
   (err: AxiosError<any>) => {
@@ -20,15 +32,11 @@ http.interceptors.response.use(
       err.response?.data?.message ||
       err.message ||
       "请求失败";
-    // Don't shout about cancelled / SSE-disconnect errors
-    if (!axios.isCancel(err) && err.code !== "ERR_CANCELED") {
-      // global notice — components can still catch and override
+    const silent = (err.config as InternalAxiosRequestConfig | undefined)?.silent;
+    // Don't shout about cancelled / SSE-disconnect errors or opt-out calls.
+    if (!silent && !axios.isCancel(err) && err.code !== "ERR_CANCELED") {
       message.error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
     return Promise.reject(err);
   }
 );
-
-export function asSWRFetcher<T = unknown>(): (url: string) => Promise<T> {
-  return (url: string) => http.get<T>(url).then((r) => r.data);
-}

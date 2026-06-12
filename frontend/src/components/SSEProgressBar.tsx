@@ -49,7 +49,7 @@ export default function SSEProgressBar({ runId, onComplete, onError }: Props) {
       },
     });
     return stop;
-  }, [runId]);
+  }, [runId, onComplete, onError]);
 
   const color =
     status === "failed" ? "#ff4d4f" :
