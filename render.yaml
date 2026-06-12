@@ -33,7 +33,7 @@ services:
         value: "false"
       # Repo-relative paths (rootDir is backend, so go up one)
       - key: SKILLS_ROOT
-        value: ../
+        value: ../skills
       - key: TESTSETS_ROOT
         value: ../数据测试集
       - key: DB_PATH

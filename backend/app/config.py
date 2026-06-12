@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     iwencai_verify_ssl: bool = False
 
     # ----- Paths -----
-    skills_root: str = "../"
+    skills_root: str = "../skills"
     testsets_root: str = "../数据测试集"
     db_path: str = "./data/fin_evalops.db"
 

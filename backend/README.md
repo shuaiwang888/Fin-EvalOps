@@ -35,4 +35,4 @@ curl -X POST http://localhost:8000/api/testsets/scan-disk
 
 ## 部署 (Render)
 
-提交 `render.yaml` 即可,在 Render Dashboard 设置 4 个 LLM key + `IWENCAI_BASE_URL` + `CORS_ORIGINS`。
+仓库根目录的 `render.yaml` 是 Blueprint。Render 自动识别;在 Render Dashboard 手动设置 4 个 LLM key + `IWENCAI_BASE_URL` + `CORS_ORIGINS`。

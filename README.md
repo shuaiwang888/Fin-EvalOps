@@ -8,9 +8,10 @@
 
 ```
 Fin-EvalOps/
-├── 自研评测Skill/         # 13 个自研评测协议(read-only)
-├── 竞品对比Skill/         # 14 个竞品对比协议(read-only, 二期接入)
-├── 端到端Skill/           # 14 个端到端协议(read-only, 二期接入)
+├── skills/                # 三类评测协议(read-only)
+│   ├── 自研评测Skill/     #   13 个自研评测协议(P0 已接入)
+│   ├── 竞品对比Skill/     #   14 个竞品对比协议(P2 接入)
+│   └── 端到端Skill/       #   14 个端到端协议(P2 接入)
 ├── 数据测试集/            # 65 条真实金融测试样本(13 分类 × 5 条)
 ├── fetch_eval_record.py  # 从问财 EvalOps 后端拉取评测明细(后端 import 复用)
 ├── backend/              # FastAPI + SQLAlchemy + SQLite
@@ -46,7 +47,7 @@ npm run dev
 
 | 端 | 平台 | 入口 |
 |---|---|---|
-| Backend | [Render](https://render.com) Web Service | `backend/render.yaml` Blueprint |
+| Backend | [Render](https://render.com) Web Service | `render.yaml` Blueprint(仓库根目录) |
 | Frontend | GitHub Pages: `https://shuaiwang888.github.io/Fin-EvalOps/` | `.github/workflows/deploy.yml` |
 
 ### 敏感信息约束(强制)
