@@ -8,6 +8,12 @@
 #   DEEPSEEK_API_KEY
 #   IWENCAI_BASE_URL=https://117.50.195.94:2879
 #   CORS_ORIGINS=https://shuaiwang888.github.io
+#
+# NOTE: free tier has NO persistent disk — SQLite at ./data/ is ephemeral.
+# Restart/redeploy ⇒ Runs/Annotations/AgentSessions are lost.
+# Skills (41) and TestCases (65) auto-rebuild from the read-only repo on every
+# boot via the lifespan hook + a one-click POST /api/testsets/scan-disk.
+# Upgrade to a paid tier (or switch to PostgreSQL) for persistent eval history.
 services:
   - type: web
     name: fin-evalops-backend
@@ -36,8 +42,9 @@ services:
         value: ../skills
       - key: TESTSETS_ROOT
         value: ../数据测试集
+      # Ephemeral on free tier — auto-created by init_db() on boot
       - key: DB_PATH
-        value: /var/data/fin_evalops.db
+        value: ./data/fin_evalops.db
       # ----- SECRETS — set manually in Render Dashboard -----
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -51,7 +58,3 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
-    disk:
-      name: fin-evalops-data
-      mountPath: /var/data
-      sizeGB: 1

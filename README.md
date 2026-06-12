@@ -50,6 +50,17 @@ npm run dev
 | Backend | [Render](https://render.com) Web Service | `render.yaml` Blueprint(仓库根目录) |
 | Frontend | GitHub Pages: `https://shuaiwang888.github.io/Fin-EvalOps/` | `.github/workflows/deploy.yml` |
 
+### Render 免费层的数据持久化
+
+免费层**无持久磁盘**,SQLite 存在容器内的 `./data/`,重启或重新部署会丢。但:
+
+- **Skill 元数据 (41 个)** 和 **测试样本 (65 条)** 在 lifespan 启动时自动从仓库重建,不需要手动操作
+- **会丢的**只有用户产生的 `Runs` / `Annotations` / `AgentSessions` 历史
+
+升级方式:
+- 加付费 disk(`$1/月` 起,在 render.yaml 中重新添加 `disk:` 块)
+- 切换到 Render PostgreSQL(免费 90 天后 `$7/月`),把 `DB_PATH` 改成 `postgresql://...`
+
 ### 敏感信息约束(强制)
 
 - LLM API key 仅存放在 Render Dashboard 环境变量中,前端代码与 GitHub Pages 仓库**绝不包含**任何 key
