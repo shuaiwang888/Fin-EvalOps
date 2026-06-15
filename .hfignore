@@ -1,0 +1,9 @@
+# Files NOT to sync to the HF Dataset repo (only the DB file is uploaded
+# by persistence.py, but this guard catches accidental manual uploads).
+.git/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+backend/data/*.db-snap
+backend/data/*.db-tmp

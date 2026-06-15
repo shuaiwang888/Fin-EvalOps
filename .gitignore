@@ -35,6 +35,8 @@ pnpm-debug.log*
 .env.*.local
 backend/data/*.db
 backend/data/*.db-journal
+backend/data/*.db-snap
+backend/data/*.db-tmp
 backend/data/backups/
 
 # IDE

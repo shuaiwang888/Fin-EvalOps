@@ -15,6 +15,8 @@ from .schemas import HealthResponse
 from .services.skill_loader import SkillLoader
 from .utils.trace import get_logger, setup_logging
 
+# Imported lazily inside lifespan to avoid import-time cost when the app is
+# reloaded (e.g. by uvicorn --reload or pytest).
 log = get_logger(__name__)
 
 
@@ -26,9 +28,21 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     log.info("Skills root: %s", settings.skills_root_abs)
     log.info("Testsets root: %s", settings.testsets_root_abs)
     log.info("Available LLM providers: %s", settings.available_providers or "<none>")
+    log.info("Default judge: %s", settings.default_judge_model_live)
+    log.info("HF persistence: %s", "enabled" if settings.hf_configured else "disabled (local-only)")
 
+    # ---- 1) Pull latest DB from HF Dataset (if configured + local is empty) ----
+    try:
+        from . import persistence
+        if persistence.pull_db():
+            log.info("Restored DB from HF Dataset repo")
+    except Exception as exc:
+        log.exception("HF pull at startup failed (non-fatal): %s", exc)
+
+    # ---- 2) Ensure schema exists (no-op if tables already present) ----
     init_db()
-    # Warm Skill cache so first /api/skills request is fast
+
+    # ---- 3) Warm Skill cache so first /api/skills request is fast ----
     try:
         loader = SkillLoader(settings.skills_root_abs)
         n = loader.sync_to_db()
@@ -36,8 +50,24 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     except Exception as exc:
         log.exception("Skill auto-sync failed (non-fatal): %s", exc)
 
+    # ---- 4) Start background HF pusher (debounced DB uploads) ----
+    try:
+        from . import persistence
+        persistence.start_pusher()
+    except Exception as exc:
+        log.exception("HF pusher start failed (non-fatal): %s", exc)
+
     yield
-    log.info("Shutdown.")
+
+    # ---- Shutdown: stop pusher + final push (captures in-progress writes) ----
+    log.info("Shutdown: flushing DB to HF (if configured)")
+    try:
+        from . import persistence
+        persistence.stop_pusher(timeout=5.0)
+        persistence.push_db(reason="shutdown", force=True)
+    except Exception as exc:
+        log.exception("HF push on shutdown failed (non-fatal): %s", exc)
+    log.info("Shutdown complete.")
 
 
 app = FastAPI(
@@ -77,6 +107,76 @@ def health() -> HealthResponse:
         providers=settings.available_providers,
         db="connected",
     )
+
+
+@app.get("/api/admin/persistence", tags=["meta"])
+def persistence_status() -> dict:
+    """Cheap endpoint to inspect HF persistence state (used by the deploy doc
+    and for smoke-testing on the Space)."""
+    from pathlib import Path
+    from . import persistence
+    local = Path(settings.db_path_abs)
+    return {
+        "hf_configured": settings.hf_configured,
+        "hf_namespace": settings.hf_namespace_live,
+        "hf_dataset_repo": settings.hf_dataset_repo_live,
+        "hf_push_interval_seconds": settings.hf_push_interval_live,
+        "dirty": persistence.is_dirty(),
+        "local_db_bytes": local.stat().st_size if local.exists() else 0,
+    }
+
+
+@app.get("/api/admin/diagnose", tags=["meta"])
+def diagnose() -> dict:
+    """Read every env-driven setting live and report what's set.
+
+    Use this when an admin endpoint shows one thing but the live app behaves
+    differently — e.g. Settings shows 0 models but a key is in the dashboard.
+    Secret-shaped values are masked (prefix + length only).
+    """
+    from . import persistence
+    return {
+        "env": settings.env_diagnostics(),
+        "available_providers": settings.available_providers,
+        "default_judge_model": settings.default_judge_model_live,
+        "cors_origins": settings.cors_origins_list,
+        "hf_configured": settings.hf_configured,
+        "models": _models_snapshot(),
+    }
+
+
+def _models_snapshot() -> list[dict]:
+    """Return the registry view the way `list_models()` would see it now."""
+    from .services.llm_client import MODELS
+    out = []
+    for m in MODELS.values():
+        key_attr = f"{m.provider}_api_key_live"
+        has_key = bool(getattr(settings, key_attr, ""))
+        out.append({
+            "id": m.id,
+            "provider": m.provider,
+            "label": m.label,
+            "context_window": m.context_window,
+            "has_api_key": has_key,
+        })
+    return out
+
+
+@app.post("/api/admin/persistence/push", tags=["meta"])
+def persistence_force_push() -> dict:
+    """Force an immediate push of the current DB to HF (bypasses dirty flag).
+    Useful after manual edits or for one-off snapshots."""
+    from . import persistence
+    ok = persistence.push_db(reason="manual-api", force=True)
+    return {"ok": ok}
+
+
+@app.post("/api/admin/persistence/pull", tags=["meta"])
+def persistence_force_pull() -> dict:
+    """Force a pull from HF (overwrites local DB). Destructive."""
+    from . import persistence
+    ok = persistence.pull_db(force=True)
+    return {"ok": ok}
 
 
 # ---------------------- Routers ----------------------

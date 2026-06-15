@@ -20,6 +20,7 @@ from ..schemas import (
     RunDetail,
 )
 from ..services import evaluator, llm_client, skill_router
+from .. import persistence as hf_persistence  # HF Datasets sync (no-op if unconfigured)
 
 router = APIRouter()
 
@@ -96,6 +97,7 @@ def create_run(body: RunCreate, bg: BackgroundTasks, db: Session = Depends(get_d
     db.add(run)
     db.commit()
     db.refresh(run)
+    hf_persistence.mark_dirty()  # record + its child rows are about to be written
     bg.add_task(evaluator.evaluate_run, run.id)
     return run
 
@@ -154,6 +156,7 @@ def create_batch(body: RunBatchCreate, bg: BackgroundTasks, db: Session = Depend
     batch.total = len(run_ids)
     db.commit()
     db.refresh(batch)
+    hf_persistence.mark_dirty()
 
     bg.add_task(evaluator.evaluate_batch, batch.id, run_ids)
     return batch

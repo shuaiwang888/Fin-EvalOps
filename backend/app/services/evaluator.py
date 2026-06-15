@@ -292,6 +292,13 @@ def _update(db: Session, run: Run, channel: str, *, status: str, progress: int,
         run.finished_at = finished_at
     _emit(channel, "progress",
           {"status": status, "progress": progress, "current_step": current_step})
+    # Coarse "something changed" signal — the actual upload is amortized
+    # (batch-end / periodic / shutdown) so this is safe to call per row.
+    try:
+        from .. import persistence
+        persistence.mark_dirty()
+    except Exception:
+        pass
 
 
 def _fail(db: Session, run: Run, channel: str, msg: str) -> None:
@@ -332,3 +339,13 @@ def evaluate_batch(batch_id: str, run_ids: list[str]) -> None:
             "index": idx + 1, "total": len(run_ids), "run_id": rid,
         })
     broker.close(channel)
+
+    # ---- Persist to HF Datasets at the natural unit of work ----
+    # Each run already calls mark_dirty() (see below); this triggers the actual
+    # upload. Best-effort — a failed push just leaves the dirty flag set for
+    # the periodic pusher / shutdown hook to retry.
+    try:
+        from .. import persistence
+        persistence.push_db(reason=f"batch-end {batch_id[:8]}")
+    except Exception as exc:  # pragma: no cover
+        log.exception("HF push after batch failed (non-fatal): %s", exc)

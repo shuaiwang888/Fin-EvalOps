@@ -84,22 +84,22 @@ MODELS: Dict[str, ModelSpec] = {
     # MiniMax — Anthropic-compatible endpoint at /anthropic.
     # Uses the official Anthropic SDK with a custom base_url + MiniMax API key.
     # Adjust the `real_model` string if MiniMax renames the model upstream.
-    "minimax-Text-01": ModelSpec(
-        "minimax-Text-01", "minimax", "minimax-Text-01",
-        "MiniMax-Text-01", 64_000,
+    "minimax-2.5": ModelSpec(
+        "minimax-2.5", "minimax", "minimax-2.5",
+        "MiniMax-2.5", 64_000,
     ),
-    "minimax-ABAB5.5s": ModelSpec(
-        "minimax-ABAB5.5s", "minimax", "abab5.5s-chat",
-        "MiniMax-ABAB5.5s", 16_000,
+    "minimax-3": ModelSpec(
+        "minimax-3", "minimax", "minimax-3",
+        "MiniMax-3", 128_000,
     ),
 }
 
 
 def list_models() -> List[dict]:
-    """Filter to models whose provider has an API key configured."""
+    """Filter to models whose provider has an API key configured (live env read)."""
     out = []
     for m in MODELS.values():
-        key_attr = f"{m.provider}_api_key"
+        key_attr = f"{m.provider}_api_key_live"
         if getattr(settings, key_attr, ""):
             out.append({
                 "id": m.id,
@@ -111,20 +111,21 @@ def list_models() -> List[dict]:
 
 
 def resolve_model(model_id: Optional[str]) -> ModelSpec:
-    """Pick a model: explicit > default > first available."""
+    """Pick a model: explicit > default > first available (live env read)."""
     if model_id and model_id in MODELS:
         spec = MODELS[model_id]
-        if getattr(settings, f"{spec.provider}_api_key", ""):
+        if getattr(settings, f"{spec.provider}_api_key_live", ""):
             return spec
         log.warning("Requested model %s but its provider key is missing, falling back", model_id)
-    default = MODELS.get(settings.default_judge_model)
-    if default and getattr(settings, f"{default.provider}_api_key", ""):
+    default_id = settings.default_judge_model_live
+    default = MODELS.get(default_id)
+    if default and getattr(settings, f"{default.provider}_api_key_live", ""):
         return default
     available = list_models()
     if not available:
         raise RuntimeError(
             "No LLM provider configured. Set at least one of "
-            "ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY."
+            "ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY / MINIMAX_API_KEY."
         )
     return MODELS[available[0]["id"]]
 
@@ -182,8 +183,8 @@ def call_with_schema(
     elif spec.provider == "minimax":
         data, raw, tin, tout = _call_anthropic(
             spec, system, user_text, schema, tool_name, max_tokens, temperature,
-            base_url_override=settings.minimax_base_url or None,
-            api_key_override=settings.minimax_api_key,
+            base_url_override=settings.minimax_base_url_live or None,
+            api_key_override=settings.minimax_api_key_live,
         )
     elif spec.provider == "openai":
         data, raw, tin, tout = _call_openai(spec, system, user_text, schema, tool_name, max_tokens, temperature)
@@ -222,7 +223,7 @@ def _call_anthropic(
     if api_key_override:
         client_kwargs["api_key"] = api_key_override
     else:
-        client_kwargs["api_key"] = settings.anthropic_api_key
+        client_kwargs["api_key"] = settings.anthropic_api_key_live
     if base_url_override:
         client_kwargs["base_url"] = base_url_override
     client = Anthropic(**client_kwargs)
@@ -270,7 +271,7 @@ def _call_openai(
 ) -> Tuple[dict, str, int, int]:
     from openai import OpenAI
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(api_key=settings.openai_api_key_live)
     resp = client.chat.completions.create(
         model=spec.real_model,
         max_tokens=max_tokens,
@@ -306,7 +307,7 @@ def _call_dashscope(
 ) -> Tuple[dict, str, int, int]:
     import dashscope  # type: ignore
 
-    dashscope.api_key = settings.dashscope_api_key
+    dashscope.api_key = settings.dashscope_api_key_live
     # Qwen supports JSON mode; we append the schema to system prompt
     schema_hint = (
         "\n\n请严格按以下 JSON Schema 输出,不要输出任何额外文本:\n"
@@ -340,7 +341,7 @@ def _call_deepseek(
     from openai import OpenAI
 
     client = OpenAI(
-        api_key=settings.deepseek_api_key,
+        api_key=settings.deepseek_api_key_live,
         base_url="https://api.deepseek.com",
     )
     schema_hint = (
@@ -405,11 +406,11 @@ def chat_completion(
 
         if spec.provider == "minimax":
             client = Anthropic(
-                api_key=settings.minimax_api_key,
-                base_url=settings.minimax_base_url or None,
+                api_key=settings.minimax_api_key_live,
+                base_url=settings.minimax_base_url_live or None,
             )
         else:
-            client = Anthropic(api_key=settings.anthropic_api_key)
+            client = Anthropic(api_key=settings.anthropic_api_key_live)
         resp = client.messages.create(
             model=spec.real_model,
             max_tokens=max_tokens,
@@ -423,7 +424,7 @@ def chat_completion(
         from openai import OpenAI
 
         base = "https://api.deepseek.com" if spec.provider == "deepseek" else None
-        api_key = getattr(settings, f"{spec.provider}_api_key")
+        api_key = getattr(settings, f"{spec.provider}_api_key_live")
         client = OpenAI(api_key=api_key, base_url=base) if base else OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
             model=spec.real_model,

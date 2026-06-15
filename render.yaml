@@ -1,19 +1,19 @@
-# Render Blueprint — backend Web Service
+# =============================================================================
+# ⚠️  DEPRECATED — Render deployment has been migrated to Hugging Face Spaces.
 #
-# Set the following ENVIRONMENT VARIABLES in the Render Dashboard
-# (NOT in this file, never commit secrets):
-#   ANTHROPIC_API_KEY
-#   OPENAI_API_KEY
-#   DASHSCOPE_API_KEY
-#   DEEPSEEK_API_KEY
-#   IWENCAI_BASE_URL=https://117.50.195.94:2879
-#   CORS_ORIGINS=https://shuaiwang888.github.io
+# This file is kept as a historical record. The current deployment is on HF
+# Spaces (Docker SDK), with HF Datasets as the persistence layer. See:
+#   - DEPLOY_HF.md  (full deployment guide)
+#   - README.md     (overview + local dev)
 #
-# NOTE: free tier has NO persistent disk — SQLite at ./data/ is ephemeral.
-# Restart/redeploy ⇒ Runs/Annotations/AgentSessions are lost.
-# Skills (41) and TestCases (65) auto-rebuild from the read-only repo on every
-# boot via the lifespan hook + a one-click POST /api/testsets/scan-disk.
-# Upgrade to a paid tier (or switch to PostgreSQL) for persistent eval history.
+# To spin up a new Render instance from this file (not recommended), set the
+# following environment variables in the Render Dashboard:
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY, DASHSCOPE_API_KEY, DEEPSEEK_API_KEY,
+#   MINIMAX_API_KEY, IWENCAI_BASE_URL, CORS_ORIGINS
+# Free tier caveat: SQLite at ./data/ is ephemeral (no persistent disk on
+# free). Use a paid disk or a managed Postgres. Same issue HF had to solve
+# with HF Datasets — HF just gives you a more ergonomic alternative.
+# =============================================================================
 services:
   - type: web
     name: fin-evalops-backend

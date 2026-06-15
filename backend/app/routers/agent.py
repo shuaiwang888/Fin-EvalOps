@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from .. import persistence as hf_persistence
 from ..db import get_db
 from ..models import AgentMessage, AgentSession
 from ..schemas import (
@@ -36,6 +37,7 @@ def create_session(model: Optional[str] = None, db: Session = Depends(get_db)):
     db.add(sess)
     db.commit()
     db.refresh(sess)
+    hf_persistence.mark_dirty()
     return sess
 
 
@@ -54,6 +56,7 @@ def delete_session(sid: str, db: Session = Depends(get_db)):
         raise HTTPException(404)
     db.delete(sess)
     db.commit()
+    hf_persistence.mark_dirty()
     return {"deleted": sid}
 
 
@@ -62,6 +65,8 @@ def send_message(sid: str, body: AgentMessageIn, db: Session = Depends(get_db)):
     if not db.get(AgentSession, sid):
         raise HTTPException(404, "session not found")
     payload = data_agent.reply(sid, body.content, model_id=body.model)
+    # data_agent.reply persists AgentMessage rows internally; mark dirty
+    hf_persistence.mark_dirty()
     return payload
 
 

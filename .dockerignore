@@ -1,0 +1,60 @@
+# Build artefacts that bloat the Docker image but are not needed at runtime.
+# Mirrors .gitignore plus a few more (build cache, docs, frontend dist).
+
+# Git
+.git/
+.gitignore
+.github/
+
+# CI / deploy
+render.yaml
+.dockerignore
+.hfignore
+Dockerfile
+
+# Frontend (deployed separately to GitHub Pages)
+frontend/
+
+# Docs (deployment doc is excluded; root README is needed for HF Space)
+docs/
+DEPLOY_HF.md
+
+# Python build / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+backend/.pytest_cache/
+
+# Node (already excluded above via frontend/, but for safety)
+node_modules/
+
+# Local data and secrets
+.env
+.env.local
+.env.*.local
+backend/data/
+*.db
+*.db-journal
+*.db.snap
+*.db.tmp
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml

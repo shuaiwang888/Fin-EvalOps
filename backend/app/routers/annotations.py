@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from .. import persistence as hf_persistence
 from ..db import get_db
 from ..models import Annotation, Run
 from ..schemas import AnnotationCreate, AnnotationOut
@@ -25,6 +26,7 @@ def create_annotation(body: AnnotationCreate, db: Session = Depends(get_db)):
     db.add(a)
     db.commit()
     db.refresh(a)
+    hf_persistence.mark_dirty()
     return a
 
 
@@ -49,4 +51,5 @@ def delete_annotation(aid: str, db: Session = Depends(get_db)):
         raise HTTPException(404)
     db.delete(a)
     db.commit()
+    hf_persistence.mark_dirty()
     return {"deleted": aid}
