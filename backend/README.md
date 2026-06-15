@@ -33,6 +33,7 @@ curl -X POST http://localhost:8000/api/testsets/scan-disk
 | LLM | `app/services/llm_client.py` | Claude/GPT/通义/DeepSeek 多 provider |
 | Data Agent | `app/services/data_agent.py` | 自然语言→SQL→图表 |
 
-## 部署 (Render)
+## 部署 (HF Space)
 
-仓库根目录的 `render.yaml` 是 Blueprint。Render 自动识别;在 Render Dashboard 手动设置 4 个 LLM key + `IWENCAI_BASE_URL` + `CORS_ORIGINS`。
+后端部署到 **Hugging Face Space (Docker SDK)**,持久化走 **HF Datasets**。详细操作见仓库根目录的 [DEPLOY_HF.md](../DEPLOY_HF.md)。
+部署完成后只需在 Space → Settings → Variables and secrets 中设置 LLM key + `IWENCAI_BASE_URL` + `CORS_ORIGINS` 等敏感/可变参数。

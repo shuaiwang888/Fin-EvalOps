@@ -111,7 +111,7 @@ export default function Dashboard() {
           type="warning"
           showIcon
           message="后端尚未配置任何 LLM Provider"
-          description="请在 Render 环境变量中至少设置一个 ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY,前端永远不会接触 key。"
+          description="请在 HF Space → Settings → Variables and secrets 中至少设置一个 ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY / MINIMAX_API_KEY,前端永远不会接触 key。"
         />
       )}
 

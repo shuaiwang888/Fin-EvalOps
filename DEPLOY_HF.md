@@ -1,6 +1,6 @@
 # Deploy Fin-EvalOps to Hugging Face Spaces
 
-> 完整把后端从 Render 迁到 HF Space,并用 **HF Datasets** 做持久化。
+> 在 HF Space (Docker SDK) 上运行后端,用 **HF Datasets** 做 SQLite 持久化。
 > 预计首次部署 10-15 分钟,后续 push 自动重部署。
 
 ## 1. 一次性准备(约 5 分钟)
@@ -219,13 +219,14 @@ git push
 
 DB 不会回滚(它在 Dataset repo 里,跟代码独立)。
 
-### 从 Render 完整迁出
+### 如果从旧平台迁过来(比如之前用过其他云)
 
-迁完后:
+迁完检查清单:
 
-1. Render Dashboard → `fin-evalops-backend` → **Suspend** / **Delete**
-2. 在 README 把 Render URL 替换成 HF Space URL(本仓库已经做了)
-3. 把 Render 的环境变量手动迁移到 HF Space Secrets(注意 `ANTHROPIC_API_KEY` 等是 Sensitive,不能直接复制粘贴到聊天工具)
+1. 在旧平台 Suspend / Delete 服务,避免空跑烧钱
+2. 把之前填在旧平台的环境变量手动迁移到 HF Space Secrets(注意 `ANTHROPIC_API_KEY` 等是 Sensitive,**不要直接复制粘贴到聊天工具**,从密码管理器走)
+3. 在前端 `VITE_API_BASE` Variable 改成新的 HF Space URL,然后**手动重跑一次 workflow**(push 不会自动重跑,Variable 改动要走 workflow_dispatch)
+4. 用 `curl -fsS "$SPACE/api/health"` 验通,再用浏览器开前端试
 
 ## 8. 本地验证脚本
 

@@ -44,7 +44,7 @@ export default function Settings() {
               showIcon
               style={{ width: "100%" }}
               message="未配置任何 LLM Provider"
-              description="请在 Render 环境变量设置 ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY 中至少一个。"
+              description="请在 HF Space → Settings → Variables and secrets 中设置 ANTHROPIC_API_KEY / OPENAI_API_KEY / DASHSCOPE_API_KEY / DEEPSEEK_API_KEY / MINIMAX_API_KEY 中至少一个。Secret 不会出现在 logs。"
             />
           )}
         </Space>

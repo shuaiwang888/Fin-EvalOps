@@ -24,7 +24,7 @@ short_description: 13 类金融 Agent 评测 Skill × 多模型 Judge × Web 评
 | Frontend | https://shuaiwang888.github.io/Fin-EvalOps/ | GitHub Pages |
 | Repo     | https://github.com/shuaiwang888/Fin-EvalOps | — |
 
-> 旧版 Render 部署 (`fin-evalops-backend.onrender.com`) 已迁移到 Hugging Face Spaces,详见 [DEPLOY_HF.md](DEPLOY_HF.md)。`render.yaml` 仅作为历史备份保留,不再更新。
+> 后端部署在 Hugging Face Spaces (Docker SDK),详见 [DEPLOY_HF.md](DEPLOY_HF.md)。
 
 ## 仓库分区
 
@@ -41,7 +41,6 @@ Fin-EvalOps/
 ├── frontend/             # Vite + React + TS + AntD + ECharts
 ├── Dockerfile            # HF Space 构建(新增)
 ├── DEPLOY_HF.md          # HF Space 部署指南(新增)
-└── render.yaml           # 已废弃,保留作历史
 ```
 
 ## 数据持久化方案(★ 新)

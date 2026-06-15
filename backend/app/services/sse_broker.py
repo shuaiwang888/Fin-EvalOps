@@ -3,8 +3,8 @@
 Each Run gets its own async Queue keyed by run_id. The HTTP SSE endpoint
 subscribes; the evaluator publishes step-by-step updates.
 
-For Render single-worker deployments this in-process queue is sufficient.
-If we later scale to multiple workers we'd swap to Redis pub/sub.
+For HF Space (Docker, single uvicorn worker) this in-process queue is
+sufficient. If we later scale to multiple workers we'd swap to Redis pub/sub.
 """
 from __future__ import annotations
 

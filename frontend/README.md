@@ -13,10 +13,11 @@ npm run dev                # http://localhost:5173
 ## 部署 (GitHub Pages)
 
 1. 在 GitHub 仓库 Settings → Pages 设置 Source 为 "GitHub Actions"
-2. Settings → Secrets and variables → Actions → Variables 添加:
-   - `VITE_API_BASE` = `https://<your-render-app>.onrender.com`
+2. Settings → Secrets and variables → Actions → **Variables**(注意是 Variables 不是 Secrets)添加:
+   - `VITE_API_BASE` = `https://<your-namespace>-fin-evalops.hf.space` (去掉尾部 `/`,例 `https://appqqq-fin-evalops.hf.space`)
    - `VITE_BASE_PATH` = `/Fin-EvalOps/` (子路径) 或 `/` (apex domain)
 3. push 到 main,Actions 自动构建并发布到 `gh-pages` 分支
+4. 改完 Variable 必须**手动重跑一次 workflow**,否则会继续用上一次构建时烤进 bundle 的旧 URL
 
 ## 安全自检
 

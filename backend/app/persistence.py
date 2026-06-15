@@ -97,7 +97,7 @@ def pull_db(force: bool = False) -> bool:
         )
         return False
 
-    # Ensure parent dir exists (Render/Render-style writeable locations)
+    # Ensure parent dir exists (HF Space container writeable locations)
     local_path.parent.mkdir(parents=True, exist_ok=True)
 
     from huggingface_hub import hf_hub_download

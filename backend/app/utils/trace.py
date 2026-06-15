@@ -1,6 +1,6 @@
 """Lightweight structured logger.
 
-Uses stdlib logging with a consistent prefix so Render's log pane stays
+Uses stdlib logging with a consistent prefix so the HF Space Logs pane stays
 readable. Adds `trace_id` context for evaluator runs.
 """
 from __future__ import annotations
