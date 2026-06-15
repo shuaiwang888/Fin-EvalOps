@@ -12,6 +12,9 @@ export const http = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+const cacheBust = () =>
+  `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+
 // Augment Axios config with our custom flag. Components that don't want the
 // global error toast (e.g. background polling) can pass `silent: true` per
 // request.
@@ -40,3 +43,15 @@ http.interceptors.response.use(
     return Promise.reject(err);
   }
 );
+
+http.interceptors.request.use((config) => {
+  const method = (config.method || "get").toLowerCase();
+  if (method === "get" || method === "head") {
+    config.headers = config.headers ?? {};
+    config.headers["Cache-Control"] = "no-cache, no-store, max-age=0, must-revalidate";
+    config.headers.Pragma = "no-cache";
+    config.headers.Expires = "0";
+    config.params = { ...(config.params ?? {}), _ts: cacheBust() };
+  }
+  return config;
+});

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
@@ -87,6 +87,22 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Run-Id", "X-Batch-Id"],
 )
+
+
+@app.middleware("http")
+async def prevent_dynamic_response_caching(request: Request, call_next) -> Response:
+    """Prevent browsers/proxies from persisting transient HF edge error pages.
+
+    HF Spaces can briefly serve a 404 HTML placeholder while the container is
+    waking or restarting. If that placeholder is cached for an API URL, the
+    frontend keeps seeing the stale HTML even after FastAPI is healthy again.
+    """
+    response: Response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith(("/api", "/docs", "/openapi.json", "/redoc")):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 
 # ---------------------- Health ----------------------
