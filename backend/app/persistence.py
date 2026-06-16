@@ -107,7 +107,7 @@ def pull_db(force: bool = False) -> bool:
             repo_id=_repo_id(),
             filename="fin_evalops.db",
             repo_type="dataset",
-            token=settings.hf_token,
+            token=_env("HF_TOKEN"),
         )
         src = Path(cache_path)
         # Atomic-ish replace

@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     db_path: str = "./data/fin_evalops.db"
 
     # ----- Web -----
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,https://shuaiwang888.github.io"
     default_judge_model: str = "minimax-3"
 
     # ----- HF persistence (Dataset repo for SQLite) -----

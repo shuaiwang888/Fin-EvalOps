@@ -41,7 +41,7 @@ jobs:
       - name: Build
         env:
           # Set in repo Settings → Secrets and variables → Actions → Variables
-          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          VITE_API_BASE: ${{ vars.VITE_API_BASE || 'https://appqqq-fin-evalops-v2.hf.space' }}
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/Fin-EvalOps/' }}
         run: npm run build
 
