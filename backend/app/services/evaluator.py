@@ -212,7 +212,7 @@ def evaluate_run(run_id: str) -> None:
                     user=user_payload,
                     schema=EVAL_OUTPUT_SCHEMA,
                     tool_name="submit_evaluation",
-                    max_tokens=6000,
+                    max_tokens=8000,  # bumped from 6000 — narrative_review + root_causes can run long
                     temperature=0.15,
                 )
             except llm_client.SchemaValidationError as exc:
@@ -227,6 +227,12 @@ def evaluate_run(run_id: str) -> None:
             run.tokens_out = result.tokens_out
             run.latency_ms = result.latency_ms
             data = result.data
+
+            # ---- 4.5 Sanitize common LLM structural mistakes ----
+            # Some providers (esp. Anthropic-compatible endpoints) misinterpret
+            # `additionalProperties` schemas and return arrays or wrapped objects.
+            # We coerce here so a single bad shape doesn't fail the whole run.
+            data = _sanitize_judge_output(data, channel)
 
             _emit(channel, "step", {"step": 2, "label": "链路诊断 + 根因归因"})
             _update(db, run, channel, status="scoring", progress=70, current_step="step2")
@@ -324,6 +330,49 @@ def _extract_tool_set(chain: Any) -> set[str]:
 
 
 # ============================================================================
+def _sanitize_judge_output(data: dict, channel: str) -> dict:
+    """Coerce common LLM output structural mistakes back into the schema shape.
+
+    Specifically handles:
+    1. `weight_assignment = {"item": [{...}, ...]}` — LLM wrapped the per-dim
+       entries in a single "item" key instead of returning a flat dict keyed by
+       dimension name. We detect the wrapper and re-flatten, using any key on
+       each entry that's not a known field name as the dimension name.
+    2. Missing `dimension_scores` — LLM ran out of tokens. Default to `{}`
+       (run still completes, but final_score will be 0 + a warning).
+    """
+    if not isinstance(data, dict):
+        return data
+
+    # 1) Unwrap `weight_assignment.item: [...]` → flat dict
+    wa = data.get("weight_assignment")
+    if isinstance(wa, dict) and isinstance(wa.get("item"), list):
+        flat: dict = {}
+        for entry in wa["item"]:
+            if not isinstance(entry, dict):
+                continue
+            # Known field names; everything else in the entry is treated as the
+            # dimension key (LLM puts it as `{dim_name: ""}` inside the entry)
+            known_fields = {"dynamic_weight", "applicability", "rationale"}
+            extra_keys = [k for k in entry.keys() if k not in known_fields]
+            if not extra_keys:
+                continue
+            dim_name = extra_keys[0]
+            clean = {k: v for k, v in entry.items()
+                     if k in known_fields and v not in (None, "")}
+            flat[dim_name] = clean
+        if flat:
+            data["weight_assignment"] = flat
+            _emit(channel, "step", {"step": 1.5, "label": f"权重已从 {len(wa['item'])} 维 unwrap"})
+
+    # 2) Default missing dimension_scores
+    if not data.get("dimension_scores"):
+        data["dimension_scores"] = {}
+        _emit(channel, "step", {"step": 1.5, "label": "dimension_scores 缺失,已默认空(分数会归 0)"})
+
+    return data
+
+
 def evaluate_batch(batch_id: str, run_ids: list[str]) -> None:
     """Run many evaluations sequentially (provider rate limits forbid full
     parallelism for the free MVP). Emits batch-level progress."""
