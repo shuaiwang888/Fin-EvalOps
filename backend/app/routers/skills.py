@@ -15,6 +15,13 @@ from ..services.skill_loader import get_loader, reset_loader
 router = APIRouter()
 
 
+# IMPORTANT: more-specific routes (/file, /tree, /reload) MUST be declared
+# BEFORE the greedy `/{skill_id:path}` route. FastAPI/Starlette match in
+# declaration order, and `:path` is greedy — it would otherwise eat the
+# literal "/file" / "/tree" / "/reload" suffix and treat the whole thing
+# as a skill_id (e.g. "self/01/file" → 404 "Skill self/01/file not found").
+
+
 @router.get("", response_model=list[SkillBrief])
 def list_skills(
     family: str | None = Query(None, pattern="^(self|competitor|e2e)$"),
@@ -26,14 +33,9 @@ def list_skills(
     return q.all()
 
 
-@router.get("/{skill_id:path}", response_model=SkillDetail)
-def get_skill(skill_id: str, db: Session = Depends(get_db)):
-    row = db.get(Skill, skill_id)
-    if not row:
-        raise HTTPException(404, f"Skill {skill_id} not found")
-    return row
-
-
+# ----------------------------------------------------------------------------
+# Sub-routes with literal suffix — declared BEFORE the greedy catch-all
+# ----------------------------------------------------------------------------
 @router.get("/{skill_id:path}/file")
 def get_skill_file(skill_id: str, rel: str = Query(..., description="Relative path within skill dir")):
     """Return raw markdown of a sub-file (rubric/_index.md, cap_*.md, etc.)."""
@@ -49,23 +51,6 @@ def get_skill_file(skill_id: str, rel: str = Query(..., description="Relative pa
     return {"skill_id": skill_id, "rel": rel, "content": text}
 
 
-@router.post("/reload", response_model=ReloadSkillsResponse)
-def reload_skills():
-    reset_loader()
-    loader = get_loader()
-    n = loader.sync_to_db()
-    families = {"self": 0, "competitor": 0, "e2e": 0}
-    for r in loader.scan_all():
-        families[r.family] = families.get(r.family, 0) + 1
-    return ReloadSkillsResponse(
-        self=families["self"], competitor=families["competitor"],
-        e2e=families["e2e"], total=n,
-    )
-
-
-# ----------------------------------------------------------------------------
-# Tree — list files under a skill's subdirectory
-# ----------------------------------------------------------------------------
 class SkillDirListing(BaseModel):
     dir: str
     files: List[str]  # rel paths from skill root
@@ -97,3 +82,28 @@ def list_skill_dir(skill_id: str, dir: str = ""):
         if f.is_file() and f.suffix == ".md":
             files.append(str(f.relative_to(base)))
     return SkillDirListing(dir=dir, files=files)
+
+
+@router.post("/reload", response_model=ReloadSkillsResponse)
+def reload_skills():
+    reset_loader()
+    loader = get_loader()
+    n = loader.sync_to_db()
+    families = {"self": 0, "competitor": 0, "e2e": 0}
+    for r in loader.scan_all():
+        families[r.family] = families.get(r.family, 0) + 1
+    return ReloadSkillsResponse(
+        self=families["self"], competitor=families["competitor"],
+        e2e=families["e2e"], total=n,
+    )
+
+
+# ----------------------------------------------------------------------------
+# Catch-all `/{skill_id:path}` — MUST be last (greedy)
+# ----------------------------------------------------------------------------
+@router.get("/{skill_id:path}", response_model=SkillDetail)
+def get_skill(skill_id: str, db: Session = Depends(get_db)):
+    row = db.get(Skill, skill_id)
+    if not row:
+        raise HTTPException(404, f"Skill {skill_id} not found")
+    return row
