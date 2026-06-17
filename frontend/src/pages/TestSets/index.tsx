@@ -250,7 +250,7 @@ export default function TestSets() {
           <Form.Item name="question" label="问题" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
-          <Form.Item name="expected_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
+          <Form.Item name="agent_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} />
           </Form.Item>
         </Form>

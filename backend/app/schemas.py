@@ -65,7 +65,7 @@ class TestCaseBrief(_OrmBase):
 
 class TestCaseDetail(TestCaseBrief):
     source: str
-    expected_answer: str
+    agent_answer: str
     reasoning_trace: Optional[List[Any]] = None
     context_history: Optional[List[Any]] = None
     tool_set: Optional[List[str]] = None
@@ -79,7 +79,7 @@ class TestCaseCreate(BaseModel):
     source_id: Optional[str] = None
     source: str = "iwencai"
     question: str
-    expected_answer: str
+    agent_answer: str
     reasoning_trace: Optional[List[Any]] = None
     context_history: Optional[List[Any]] = None
     tags: Optional[List[str]] = None
@@ -88,7 +88,7 @@ class TestCaseCreate(BaseModel):
 
 class TestCaseUpdate(BaseModel):
     question: Optional[str] = None
-    expected_answer: Optional[str] = None
+    agent_answer: Optional[str] = None
     reasoning_trace: Optional[List[Any]] = None
     context_history: Optional[List[Any]] = None
     tags: Optional[List[str]] = None

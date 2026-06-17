@@ -77,7 +77,7 @@ class TestCase(Base):
     source: Mapped[str] = mapped_column(String(32), default="iwencai")
 
     question: Mapped[str] = mapped_column(Text)
-    expected_answer: Mapped[str] = mapped_column(Text)
+    agent_answer: Mapped[str] = mapped_column(Text)
     reasoning_trace: Mapped[Optional[list]] = mapped_column(JSON, default=None)
     context_history: Mapped[Optional[list]] = mapped_column(JSON, default=None)
 

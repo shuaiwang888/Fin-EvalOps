@@ -79,13 +79,20 @@ def _id_from_question(q: str) -> str:
 
 
 def _normalize_raw(raw: dict) -> dict:
-    """Accept both Chinese-keyed JSON (from 数据测试集) and English schema."""
+    """Accept both Chinese-keyed JSON (from 数据测试集) and English schema.
+
+    The field `agent_answer` carries the model/agent's produced answer (the
+    input we evaluate against). Was previously misnamed `expected_answer`.
+    For transitional compatibility we still read `"答案"` from old Chinese-keyed
+    test data JSON files; new exports should use `agent_answer`.
+    """
     if "问题" in raw:
         return {
             "source_id": raw.get("id") or _id_from_question(raw["问题"]),
             "source": raw.get("来源", "iwencai"),
             "question": raw["问题"],
-            "expected_answer": raw.get("答案", ""),
+            # Prefer new key; fall back to legacy Chinese key
+            "agent_answer": raw.get("agent_answer") or raw.get("答案", ""),
             "reasoning_trace": raw.get("链路数据") or [],
             "context_history": raw.get("上下文"),
         }
@@ -157,16 +164,16 @@ def create_testcase(body: TestCaseCreate, db: Session = Depends(get_db)):
         source=body.source,
         category_code=body.category_code,
         question=body.question,
-        expected_answer=body.expected_answer,
+        agent_answer=body.agent_answer,
         reasoning_trace=body.reasoning_trace,
         context_history=body.context_history,
         tags=body.tags,
         file_path=body.file_path,
         imported_from="manual",
         language=_detect_language(body.question),
-        has_charts=_has_charts(body.expected_answer),
+        has_charts=_has_charts(body.agent_answer),
         tool_set=_extract_tools(body.reasoning_trace),
-        inferred_difficulty=_infer_difficulty(body.expected_answer, body.reasoning_trace),
+        inferred_difficulty=_infer_difficulty(body.agent_answer, body.reasoning_trace),
     )
     db.add(tc)
     db.commit()
@@ -181,11 +188,11 @@ def update_testcase(tc_id: str, body: TestCaseUpdate, db: Session = Depends(get_
         raise HTTPException(404, f"TestCase {tc_id} not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(tc, k, v)
-    if body.expected_answer is not None:
-        tc.has_charts = _has_charts(body.expected_answer)
+    if body.agent_answer is not None:
+        tc.has_charts = _has_charts(body.agent_answer)
     if body.reasoning_trace is not None:
         tc.tool_set = _extract_tools(body.reasoning_trace)
-        tc.inferred_difficulty = _infer_difficulty(tc.expected_answer or "", body.reasoning_trace)
+        tc.inferred_difficulty = _infer_difficulty(tc.agent_answer or "", body.reasoning_trace)
     if body.question is not None:
         tc.language = _detect_language(body.question)
     db.commit()
@@ -237,15 +244,15 @@ async def import_file(
             source=norm.get("source", "iwencai"),
             category_code=category_code,
             question=norm["question"],
-            expected_answer=norm.get("expected_answer", ""),
+            agent_answer=norm.get("agent_answer", ""),
             reasoning_trace=norm.get("reasoning_trace"),
             context_history=norm.get("context_history"),
             imported_from="file",
             language=_detect_language(norm["question"]),
-            has_charts=_has_charts(norm.get("expected_answer", "")),
+            has_charts=_has_charts(norm.get("agent_answer", "")),
             tool_set=_extract_tools(norm.get("reasoning_trace")),
             inferred_difficulty=_infer_difficulty(
-                norm.get("expected_answer", ""), norm.get("reasoning_trace")
+                norm.get("agent_answer", ""), norm.get("reasoning_trace")
             ),
         )
         db.add(tc)
@@ -279,15 +286,15 @@ def import_from_iwencai(body: IwencaiImportRequest, db: Session = Depends(get_db
             source=norm.get("source", "iwencai"),
             category_code=body.category_code,
             question=norm["question"],
-            expected_answer=norm.get("expected_answer", ""),
+            agent_answer=norm.get("agent_answer", ""),
             reasoning_trace=norm.get("reasoning_trace"),
             context_history=norm.get("context_history"),
             imported_from="fetch",
             language=_detect_language(norm["question"]),
-            has_charts=_has_charts(norm.get("expected_answer", "")),
+            has_charts=_has_charts(norm.get("agent_answer", "")),
             tool_set=_extract_tools(norm.get("reasoning_trace")),
             inferred_difficulty=_infer_difficulty(
-                norm.get("expected_answer", ""), norm.get("reasoning_trace")
+                norm.get("agent_answer", ""), norm.get("reasoning_trace")
             ),
         )
         db.add(tc)
@@ -346,15 +353,15 @@ def scan_disk(db: Session = Depends(get_db)):
             )
             if existing:
                 existing.question = norm["question"]
-                existing.expected_answer = norm.get("expected_answer", "")
+                existing.agent_answer = norm.get("agent_answer", "")
                 existing.reasoning_trace = norm.get("reasoning_trace")
                 existing.context_history = norm.get("context_history")
                 existing.file_path = str(f)
                 existing.language = _detect_language(norm["question"])
-                existing.has_charts = _has_charts(norm.get("expected_answer", ""))
+                existing.has_charts = _has_charts(norm.get("agent_answer", ""))
                 existing.tool_set = _extract_tools(norm.get("reasoning_trace"))
                 existing.inferred_difficulty = _infer_difficulty(
-                    norm.get("expected_answer", ""), norm.get("reasoning_trace")
+                    norm.get("agent_answer", ""), norm.get("reasoning_trace")
                 )
                 updated += 1
             else:
@@ -363,16 +370,16 @@ def scan_disk(db: Session = Depends(get_db)):
                     source=norm.get("source", "iwencai"),
                     category_code=code,
                     question=norm["question"],
-                    expected_answer=norm.get("expected_answer", ""),
+                    agent_answer=norm.get("agent_answer", ""),
                     reasoning_trace=norm.get("reasoning_trace"),
                     context_history=norm.get("context_history"),
                     file_path=str(f),
                     imported_from="file",
                     language=_detect_language(norm["question"]),
-                    has_charts=_has_charts(norm.get("expected_answer", "")),
+                    has_charts=_has_charts(norm.get("agent_answer", "")),
                     tool_set=_extract_tools(norm.get("reasoning_trace")),
                     inferred_difficulty=_infer_difficulty(
-                        norm.get("expected_answer", ""), norm.get("reasoning_trace")
+                        norm.get("agent_answer", ""), norm.get("reasoning_trace")
                     ),
                 )
                 db.add(tc)

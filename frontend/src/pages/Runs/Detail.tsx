@@ -219,7 +219,7 @@ export default function RunDetail() {
                           <MarkdownView text={testcase.question} />
                         </Card>
                         <Card type="inner" size="small" title="期望答案">
-                          <MarkdownView text={testcase.expected_answer} />
+                          <MarkdownView text={testcase.agent_answer} />
                         </Card>
                       </Space>
                     ),

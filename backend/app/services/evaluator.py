@@ -193,7 +193,7 @@ def evaluate_run(run_id: str) -> None:
             tool_set = _extract_tool_set(testcase.reasoning_trace)
             user_payload = {
                 "question": testcase.question,
-                "text_answer": testcase.expected_answer,
+                "text_answer": testcase.agent_answer,
                 "context": testcase.context_history,
                 "chain": testcase.reasoning_trace,
                 "tools": list(tool_set),

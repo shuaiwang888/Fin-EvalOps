@@ -83,3 +83,51 @@ def init_db() -> None:
     from . import models  # noqa: F401 ensure models imported
 
     Base.metadata.create_all(bind=engine)
+    _run_inline_migrations()
+
+
+def _run_inline_migrations() -> None:
+    """Lightweight in-place schema migrations for SQLite.
+
+    Each migration is idempotent: it checks the current state of the DB
+    and only runs if needed. Add new entries to MIGRATIONS below; never
+    modify a deployed migration once it's been released.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return  # migrations are SQLite-specific for now
+
+    MIGRATIONS = [
+        # (description, predicate_sql, action_sql)
+        # Predicate should return 1+ rows if migration is NEEDED, else 0 rows.
+        # v1: rename expected_answer → agent_answer on testcases (2026-06-17)
+        (
+            "rename testcases.expected_answer → agent_answer",
+            "SELECT 1 FROM pragma_table_info('testcases') WHERE name='expected_answer'",
+            "ALTER TABLE testcases RENAME COLUMN expected_answer TO agent_answer",
+        ),
+    ]
+
+    with engine.begin() as conn:
+        from sqlalchemy import text
+        for desc, pred_sql, action_sql in MIGRATIONS:
+            try:
+                needed = conn.execute(text(pred_sql)).fetchone()
+            except Exception as exc:  # pragma: no cover — table doesn't exist yet
+                # First boot before create_all? No — Base.metadata.create_all runs
+                # before this. If we hit this, the migration SQL itself is buggy.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "migration predicate failed (skipping %s): %s", desc, exc,
+                )
+                continue
+            if not needed:
+                continue
+            try:
+                conn.execute(text(action_sql))
+                import logging
+                logging.getLogger(__name__).info("✅ migration applied: %s", desc)
+            except Exception as exc:  # pragma: no cover
+                import logging
+                logging.getLogger(__name__).exception(
+                    "migration FAILED (%s): %s", desc, exc,
+                )

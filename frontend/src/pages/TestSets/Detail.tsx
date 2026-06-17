@@ -59,7 +59,7 @@ export default function TestSetDetail() {
             <Button icon={<EditOutlined />} onClick={() => {
               form.setFieldsValue({
                 question: data.question,
-                expected_answer: data.expected_answer,
+                agent_answer: data.agent_answer,
               });
               setEditing(true);
             }}>编辑</Button>
@@ -115,7 +115,7 @@ export default function TestSetDetail() {
               label: "期望答案",
               children: (
                 <Card type="inner" size="small">
-                  <MarkdownView text={data.expected_answer} />
+                  <MarkdownView text={data.agent_answer} />
                 </Card>
               ),
             },
@@ -161,7 +161,7 @@ export default function TestSetDetail() {
           <Form.Item name="question" label="问题" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
-          <Form.Item name="expected_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
+          <Form.Item name="agent_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 8, maxRows: 20 }} />
           </Form.Item>
         </Form>

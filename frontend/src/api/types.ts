@@ -47,7 +47,7 @@ export interface TestCaseBrief {
 
 export interface TestCaseDetail extends TestCaseBrief {
   source: string;
-  expected_answer: string;
+  agent_answer: string;
   reasoning_trace?: any[] | null;
   context_history?: any[] | null;
   tool_set?: string[] | null;
