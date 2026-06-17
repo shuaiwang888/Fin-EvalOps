@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pathlib import Path
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import List
 
 from ..db import get_db
 from ..models import Skill
@@ -58,3 +61,39 @@ def reload_skills():
         self=families["self"], competitor=families["competitor"],
         e2e=families["e2e"], total=n,
     )
+
+
+# ----------------------------------------------------------------------------
+# Tree — list files under a skill's subdirectory
+# ----------------------------------------------------------------------------
+class SkillDirListing(BaseModel):
+    dir: str
+    files: List[str]  # rel paths from skill root
+
+
+@router.get("/{skill_id:path}/tree", response_model=SkillDirListing)
+def list_skill_dir(skill_id: str, dir: str = ""):
+    """List files under `<skill_root>/<dir>`, returning rel paths.
+
+    Used by the Skill Detail page to discover rubric/root-cause/tool-list
+    files dynamically (so the UI doesn't hard-code the file list).
+
+    Reuses the same path-traversal guard as /file: `..` is forbidden.
+    """
+    if ".." in dir:
+        raise HTTPException(400, "dir must not contain '..'")
+    loader = get_loader()
+    rec = loader.get_one(skill_id)
+    if not rec:
+        raise HTTPException(404, f"Skill {skill_id} not found")
+    base = Path(rec.path)
+    target = base / dir
+    if not target.exists():
+        return SkillDirListing(dir=dir, files=[])
+    if not target.is_dir():
+        raise HTTPException(400, f"{dir} is not a directory")
+    files: List[str] = []
+    for f in sorted(target.iterdir()):
+        if f.is_file() and f.suffix == ".md":
+            files.append(str(f.relative_to(base)))
+    return SkillDirListing(dir=dir, files=files)

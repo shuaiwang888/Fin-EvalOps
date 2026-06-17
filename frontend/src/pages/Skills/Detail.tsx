@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Card,
@@ -6,30 +7,86 @@ import {
   Space,
   Button,
   Descriptions,
-  Table,
   Empty,
   Spin,
+  Alert,
 } from "antd";
-import { ArrowLeftOutlined, FileTextOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined,
+  FileTextOutlined,
+  BookOutlined,
+  ProfileOutlined,
+  ToolOutlined,
+  CodeOutlined,
+  BulbOutlined,
+} from "@ant-design/icons";
 import useSWR from "swr";
 import { skillsApi } from "../../api/skills";
 import MarkdownView from "../../components/MarkdownView";
 
-const REL_FILES = [
-  { rel: "SKILL_zh.md", label: "SKILL_zh.md(协议主文档)" },
-  { rel: "README.md", label: "README.md" },
-  { rel: "references/rubric/_index.md", label: "rubric/_index.md" },
-  { rel: "references/golden_cases/_index.md", label: "golden_cases/_index.md" },
-  { rel: "references/root-cause/_index.md", label: "root-cause/_index.md" },
-  { rel: "references/tool_list/_index.md", label: "tool_list/_index.md" },
-  { rel: "references/output-schema_zh.md", label: "output-schema_zh.md" },
+// ---------------------------------------------------------------------------
+// The 5 sections that compose a Skill protocol. Each section is rendered as
+// a top-level tab; nested sub-tabs hold related files (cap_*.md, dim_*.md
+// under rubric; L1/*.md under root-cause; tool/*.md under tool_list).
+// ---------------------------------------------------------------------------
+type SectionDef = {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  /** main file shown first (under this tab) */
+  primaryFile: string;
+  /** optional sub-directory whose .md files become nested tabs */
+  extraDir?: string;
+  /** human-readable label for the extra-dir sub-tabs */
+  extraLabel?: string;
+};
+
+const SECTIONS: SectionDef[] = [
+  {
+    key: "skill",
+    label: "协议文档",
+    icon: <BookOutlined />,
+    primaryFile: "SKILL_zh.md",
+  },
+  {
+    key: "rubric",
+    label: "评分细则",
+    icon: <ProfileOutlined />,
+    primaryFile: "references/rubric/_index.md",
+    extraDir: "references/rubric",
+    extraLabel: "细则文件",
+  },
+  {
+    key: "root_cause",
+    label: "根因体系",
+    icon: <BulbOutlined />,
+    primaryFile: "references/root-cause/_index.md",
+    extraDir: "references/root-cause",
+    extraLabel: "L1 详情",
+  },
+  {
+    key: "tools",
+    label: "工具列表",
+    icon: <ToolOutlined />,
+    primaryFile: "references/tool_list/_index.md",
+    extraDir: "references/tool_list",
+    extraLabel: "工具详情",
+  },
+  {
+    key: "schema",
+    label: "输出契约",
+    icon: <CodeOutlined />,
+    primaryFile: "references/output-schema_zh.md",
+  },
 ];
 
 export default function SkillDetail() {
   const { family = "self", code = "01" } = useParams();
   const navigate = useNavigate();
   const skillId = `${family}/${code}`;
-  const { data, isLoading } = useSWR(`/api/skills/${skillId}`, () => skillsApi.get(skillId));
+  const { data, isLoading } = useSWR(`/api/skills/${skillId}`, () =>
+    skillsApi.get(skillId)
+  );
 
   if (isLoading) return <Card loading />;
   if (!data) return <Card>未找到 Skill {skillId}</Card>;
@@ -53,11 +110,6 @@ export default function SkillDetail() {
           <Descriptions.Item label="路径">
             <code style={{ fontSize: 11 }}>{data.path}</code>
           </Descriptions.Item>
-          <Descriptions.Item label="维度数" span={2}>
-            {data.dimensions?.count ?? "—"} 个维度
-          </Descriptions.Item>
-          <Descriptions.Item label="封顶数">{data.caps?.count ?? "—"} 条</Descriptions.Item>
-          <Descriptions.Item label="根因 L1">{data.root_causes?.count ?? "—"} 个</Descriptions.Item>
           <Descriptions.Item label="一句话定位" span={2}>
             {data.one_liner}
           </Descriptions.Item>
@@ -69,106 +121,103 @@ export default function SkillDetail() {
 
       <Card>
         <Tabs
-          defaultActiveKey="overview"
-          items={[
-            {
-              key: "overview",
-              label: "维度",
-              children: <DimensionList items={data.dimensions?.items || []} />,
-            },
-            {
-              key: "caps",
-              label: `封顶规则 (${data.caps?.count ?? 0})`,
-              children: <CapList items={data.caps?.items || []} />,
-            },
-            {
-              key: "root",
-              label: `根因 L1 (${data.root_causes?.count ?? 0})`,
-              children: <KvList items={data.root_causes?.items || []} />,
-            },
-            {
-              key: "tools",
-              label: `工具 (${data.tools?.count ?? 0})`,
-              children: <KvList items={data.tools?.items || []} />,
-            },
-            {
-              key: "files",
-              label: "源文件",
-              children: <SkillFiles skillId={data.id} />,
-            },
-          ]}
+          defaultActiveKey="skill"
+          type="card"
+          items={SECTIONS.map((s) => ({
+            key: s.key,
+            label: (
+              <Space size={4}>
+                {s.icon}
+                {s.label}
+              </Space>
+            ),
+            children: <SectionPanel skillId={data.id} section={s} />,
+          }))}
         />
       </Card>
     </Space>
   );
 }
 
-function DimensionList({ items }: { items: any[] }) {
-  if (!items.length) return <Empty />;
-  return (
-    <Table
-      dataSource={items}
-      rowKey={(r) => r.key || r.label}
-      size="small"
-      pagination={false}
-      columns={[
-        { title: "Key", dataIndex: "key", render: (v: string) => v && <code>{v}</code> },
-        { title: "Label", dataIndex: "label", ellipsis: true },
-      ]}
-    />
-  );
+// ---------------------------------------------------------------------------
+// SectionPanel — primary file + nested sub-tabs for extra files
+// ---------------------------------------------------------------------------
+function SectionPanel({
+  skillId,
+  section,
+}: {
+  skillId: string;
+  section: SectionDef;
+}) {
+  if (section.extraDir) {
+    return (
+      <Tabs
+        type="line"
+        size="small"
+        items={[
+          {
+            key: "__primary__",
+            label: (
+              <Space size={4}>
+                <FileTextOutlined />
+                _index.md
+              </Space>
+            ),
+            children: <FileContent skillId={skillId} rel={section.primaryFile} />,
+          },
+          {
+            key: "__extra__",
+            label: (
+              <Space size={4}>
+                <FileTextOutlined />
+                {section.extraLabel}
+              </Space>
+            ),
+            children: <ExtraDirTabs skillId={skillId} dir={section.extraDir} />,
+          },
+        ]}
+      />
+    );
+  }
+  return <FileContent skillId={skillId} rel={section.primaryFile} />;
 }
 
-function CapList({ items }: { items: any[] }) {
-  if (!items.length) return <Empty />;
-  return (
-    <Table
-      dataSource={items}
-      rowKey="key"
-      size="small"
-      pagination={false}
-      columns={[
-        { title: "Rule", dataIndex: "key", render: (v: string) => <code>{v}</code> },
-        { title: "Label", dataIndex: "label" },
-        {
-          title: "Ceiling", dataIndex: "ceiling", width: 90,
-          render: (v: number) => v != null ? <Tag color="red">▼{v}</Tag> : "—",
-        },
-      ]}
-    />
+// ---------------------------------------------------------------------------
+// ExtraDirTabs — one sub-tab per .md file discovered in the directory
+// ---------------------------------------------------------------------------
+function ExtraDirTabs({
+  skillId,
+  dir,
+}: {
+  skillId: string;
+  dir: string;
+}) {
+  const { data, isLoading, error } = useSWR(
+    `/api/skills/${skillId}/tree?dir=${encodeURIComponent(dir)}`,
+    () => skillsApi.tree(skillId, dir)
   );
+  if (isLoading) return <Spin />;
+  if (error) return <Alert type="error" message={`无法列出 ${dir}`} />;
+  const files = (data?.files || []).filter((f) => f !== "_index.md");
+  if (!files.length) return <Empty description="无文件" />;
+
+  const items = files.map((rel) => ({
+    key: rel,
+    label: (
+      <Space size={4}>
+        <FileTextOutlined />
+        {rel.split("/").pop()}
+      </Space>
+    ),
+    children: <FileContent skillId={skillId} rel={rel} />,
+  }));
+
+  return <Tabs type="card" size="small" items={items} />;
 }
 
-function KvList({ items }: { items: any[] }) {
-  if (!items.length) return <Empty />;
-  return (
-    <Table
-      dataSource={items}
-      rowKey={(r, i) => r.key || r.label || String(i)}
-      size="small"
-      pagination={false}
-      columns={[
-        { title: "Key", dataIndex: "key", render: (v: string) => v ? <code>{v}</code> : "" },
-        { title: "Label", dataIndex: "label" },
-      ]}
-    />
-  );
-}
-
-function SkillFiles({ skillId }: { skillId: string }) {
-  return (
-    <Tabs
-      type="card"
-      size="small"
-      items={REL_FILES.map((f) => ({
-        key: f.rel,
-        label: <span><FileTextOutlined /> {f.label}</span>,
-        children: <FileContent skillId={skillId} rel={f.rel} />,
-      }))}
-    />
-  );
-}
-
+// ---------------------------------------------------------------------------
+// FileContent — load + render a single .md file
+// ---------------------------------------------------------------------------
 function FileContent({ skillId, rel }: { skillId: string; rel: string }) {
   const { data, isLoading, error } = useSWR(
     `/api/skills/${skillId}/file?rel=${rel}`,
@@ -177,5 +226,10 @@ function FileContent({ skillId, rel }: { skillId: string; rel: string }) {
   );
   if (isLoading) return <Spin />;
   if (error) return <Empty description={`${rel} 不存在`} />;
-  return <MarkdownView text={data?.content || ""} highlightRefs={false} />;
+  if (!data?.content) return <Empty description={`${rel} 为空`} />;
+  return (
+    <div style={{ maxHeight: "70vh", overflow: "auto", paddingRight: 8 }}>
+      <MarkdownView text={data.content} highlightRefs={false} />
+    </div>
+  );
 }

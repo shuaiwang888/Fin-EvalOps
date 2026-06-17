@@ -15,6 +15,13 @@ export const skillsApi = {
         { params: { rel } }
       )
       .then((r) => r.data),
+  tree: (id: string, dir: string) =>
+    http
+      .get<{ dir: string; files: string[] }>(
+        `/api/skills/${id}/tree`,
+        { params: { dir } }
+      )
+      .then((r) => r.data),
   reload: () =>
     http
       .post<{ self: number; competitor: number; e2e: number; total: number }>(
