@@ -393,10 +393,17 @@ def scan_disk(db: Session = Depends(get_db)):
     Each file is a top-level JSON array; every element is one test case using
     the legacy Chinese-keyed schema (or the new English-keyed one). File names
     follow `<NN>-<slug>.json` so the category code is parsed from the filename.
+
+    If testsets_root does not exist on the Space (e.g. test data is uploaded
+    via the web UI instead of bundled in the Docker image), return an empty
+    result so the frontend can show "no disk data — use 导入 JSON instead"
+    rather than a 500.
     """
     root: Path = settings.testsets_root_abs
     if not root.exists():
-        raise HTTPException(500, f"Testsets root {root} does not exist")
+        # Not an error — the Space simply doesn't bundle test data. The UI
+        # should still work via the JSON import endpoints.
+        return ScanDiskResponse(scanned=0, inserted=0, updated=0, skipped=0)
 
     # ensure categories exist (skill_loader normally creates them, but be defensive)
     for code, slug in SELF_SKILL_EN_SLUGS.items():
