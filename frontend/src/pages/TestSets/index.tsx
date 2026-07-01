@@ -13,6 +13,7 @@ import {
   message,
   Tree,
   Tooltip,
+  Popconfirm,
 } from "antd";
 import {
   UploadOutlined,
@@ -20,13 +21,16 @@ import {
   CloudDownloadOutlined,
   ReloadOutlined,
   SyncOutlined,
+  AppstoreOutlined,
+  DeleteOutlined,
+  TagsOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import dayjs from "dayjs";
 
 import { testsetsApi } from "../../api/testsets";
-import type { TestCaseBrief } from "../../api/types";
+import type { TestCaseBrief, TestCategory } from "../../api/types";
 
 const { Search } = Input;
 
@@ -36,6 +40,22 @@ const DIFFICULTY_COLOR: Record<string, string> = {
   complex: "red",
 };
 
+// Build a short, slug-ish default code from a Chinese / mixed category name so
+// the user only has to type the human label. Falls back to a hash if the name
+// strips down to nothing (e.g. all-punctuation).
+function suggestCode(name: string, existing: TestCategory[]): string {
+  const base = (name || "batch")
+    .toLowerCase()
+    .replace(/[^a-z0-9一-鿿]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24) || "batch";
+  const codes = new Set(existing.map((c) => c.code));
+  if (!codes.has(base)) return base;
+  let n = 2;
+  while (codes.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
 export default function TestSets() {
   const navigate = useNavigate();
   const [filters, setFilters] = useState<{
@@ -43,7 +63,10 @@ export default function TestSets() {
     page: number; page_size: number;
   }>({ page: 1, page_size: 20 });
 
-  const { data: categories } = useSWR("/api/testsets/categories", testsetsApi.categories);
+  const { data: categories, mutate: mutateCategories } = useSWR(
+    "/api/testsets/categories",
+    testsetsApi.categories
+  );
   const key = `/api/testsets?${JSON.stringify(filters)}`;
   const { data, isLoading, mutate } = useSWR(key, () => testsetsApi.list(filters));
 
@@ -54,12 +77,27 @@ export default function TestSets() {
   const [createForm] = Form.useForm();
   const [iwencaiForm] = Form.useForm();
 
+  // Category management modal — can be opened in "manage" mode (list + delete)
+  // or "create" mode (inline quick-create from a parent modal). `onCreated`
+  // lets the parent auto-select the new category after success.
+  const [catModal, setCatModal] = useState<
+    | { mode: "manage" }
+    | { mode: "create"; onCreated?: (cat: TestCategory) => void }
+    | null
+  >(null);
+  const [catForm] = Form.useForm();
+
+  const refreshAll = async () => {
+    await mutateCategories();
+    await mutate();
+  };
+
   const treeData = [
     {
       title: "全部",
       key: "all",
       children: (categories || []).map((c) => ({
-        title: `${c.code} · ${c.name_zh}`,
+        title: c.is_custom ? `${c.code} · ${c.name_zh} 🏷️` : `${c.code} · ${c.name_zh}`,
         key: c.code,
       })),
     },
@@ -73,6 +111,44 @@ export default function TestSets() {
       mutate();
     } finally { hide(); }
   };
+
+  const categoryOptions = (categories || []).map((c) => ({
+    value: c.code,
+    label: c.is_custom ? `${c.code} · ${c.name_zh} 🏷️` : `${c.code} · ${c.name_zh}`,
+  }));
+
+  // Inline "+ 新建分类" trigger — opens the create modal and, on success,
+  // hands the new category back to the caller so the surrounding Select can
+  // auto-select it.
+  const renderCategoryPicker = (
+    value: string | undefined,
+    onChange: (v: string | undefined) => void,
+    required = false
+  ) => (
+    <Space.Compact style={{ width: "100%" }}>
+      <Select
+        placeholder="选择分类"
+        value={value}
+        allowClear
+        showSearch
+        optionFilterProp="label"
+        style={{ width: "calc(100% - 110px)" }}
+        options={categoryOptions}
+        onChange={onChange}
+      />
+      <Button
+        icon={<PlusOutlined />}
+        onClick={() =>
+          setCatModal({
+            mode: "create",
+            onCreated: (cat) => onChange(cat.code),
+          })
+        }
+      >
+        新建分类
+      </Button>
+    </Space.Compact>
+  );
 
   return (
     <div style={{ display: "flex", gap: 16 }}>
@@ -96,6 +172,11 @@ export default function TestSets() {
           <Space>
             <Tooltip title="扫描 数据测试集/ 目录,upsert 到数据库">
               <Button icon={<SyncOutlined />} onClick={handleScanDisk}>磁盘同步</Button>
+            </Tooltip>
+            <Tooltip title="创建 / 删除自定义业务分类">
+              <Button icon={<AppstoreOutlined />} onClick={() => setCatModal({ mode: "manage" })}>
+                分类管理
+              </Button>
             </Tooltip>
             <Button icon={<CloudDownloadOutlined />} onClick={() => setShowIwencai(true)}>问财拉取</Button>
             <Button icon={<UploadOutlined />} onClick={() => setShowImport(true)}>导入 JSON</Button>
@@ -154,8 +235,18 @@ export default function TestSets() {
               title: "分类",
               dataIndex: "category_code",
               key: "category_code",
-              width: 80,
-              render: (v: string) => <Tag color="blue">{v}</Tag>,
+              width: 160,
+              render: (v: string) => {
+                const cat = (categories || []).find((c) => c.code === v);
+                const isCustom = cat?.is_custom ?? false;
+                return (
+                  <Tooltip title={isCustom ? "自定义业务分类" : "系统内置分类"}>
+                    <Tag color={isCustom ? "purple" : "blue"} style={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {isCustom && "🏷️ "}{v}
+                    </Tag>
+                  </Tooltip>
+                );
+              },
             },
             {
               title: "问题",
@@ -242,10 +333,9 @@ export default function TestSets() {
       >
         <Form form={createForm} layout="vertical">
           <Form.Item name="category_code" label="分类" rules={[{ required: true }]}>
-            <Select
-              placeholder="选择 13 类分类"
-              options={(categories || []).map((c) => ({ value: c.code, label: `${c.code} · ${c.name_zh}` }))}
-            />
+            {renderCategoryPicker(undefined, (v) =>
+              createForm.setFieldValue("category_code", v)
+            )}
           </Form.Item>
           <Form.Item name="question" label="问题" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
@@ -265,12 +355,7 @@ export default function TestSets() {
       >
         <Form layout="vertical">
           <Form.Item label="目标分类" required>
-            <Select
-              placeholder="选择分类"
-              value={importCat}
-              options={(categories || []).map((c) => ({ value: c.code, label: `${c.code} · ${c.name_zh}` }))}
-              onChange={setImportCat}
-            />
+            {renderCategoryPicker(importCat, setImportCat)}
           </Form.Item>
           <Upload
             accept=".json"
@@ -295,6 +380,7 @@ export default function TestSets() {
           </Upload>
           <div style={{ fontSize: 12, color: "#999", marginTop: 12 }}>
             支持原始测试集格式 (问题/答案/链路数据 中文字段) 或英文 schema。
+            分类支持内置 13 类与用户自定义业务分类。
           </div>
         </Form>
       </Modal>
@@ -317,7 +403,9 @@ export default function TestSets() {
       >
         <Form form={iwencaiForm} layout="vertical">
           <Form.Item name="category_code" label="目标分类" rules={[{ required: true }]}>
-            <Select options={(categories || []).map((c) => ({ value: c.code, label: `${c.code} · ${c.name_zh}` }))} />
+            {renderCategoryPicker(undefined, (val) =>
+              iwencaiForm.setFieldValue("category_code", val)
+            )}
           </Form.Item>
           <Form.Item name="record_ids" label="record_id 列表(空格/逗号/换行分隔)" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 4, maxRows: 12 }}
@@ -328,6 +416,210 @@ export default function TestSets() {
           </div>
         </Form>
       </Modal>
+
+      {/* Category management modal — reused for both manage-list and quick-create */}
+      <Modal
+        title={catModal?.mode === "manage" ? "分类管理" : "新建业务分类"}
+        open={!!catModal}
+        onCancel={() => {
+          setCatModal(null);
+          catForm.resetFields();
+        }}
+        footer={null}
+        width={catModal?.mode === "manage" ? 720 : 520}
+      >
+        {catModal?.mode === "manage" ? (
+          <ManageCategories
+            categories={categories || []}
+            onChanged={refreshAll}
+            onCreateClick={() => setCatModal({ mode: "create" })}
+          />
+        ) : (
+          <CategoryQuickCreate
+            form={catForm}
+            existing={categories || []}
+            onCancel={() => {
+              setCatModal(null);
+              catForm.resetFields();
+            }}
+            onCreated={async (cat) => {
+              await mutateCategories();
+              if (catModal?.mode === "create") {
+                catModal.onCreated?.(cat);
+              }
+              setCatModal(null);
+              catForm.resetFields();
+              message.success(`已创建分类 ${cat.code}`);
+            }}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function CategoryQuickCreate(props: {
+  form: any;
+  existing: TestCategory[];
+  onCancel: () => void;
+  onCreated: (cat: TestCategory) => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  return (
+    <Form
+      form={props.form}
+      layout="vertical"
+      onFinish={async (values: any) => {
+        setSubmitting(true);
+        try {
+          const cat = await testsetsApi.createCategory({
+            code: values.code,
+            name_zh: values.name_zh,
+            description: values.description,
+          });
+          props.onCreated(cat);
+        } catch {
+          /* axios interceptor shows the error */
+        } finally {
+          setSubmitting(false);
+        }
+      }}
+    >
+      <Form.Item
+        name="name_zh"
+        label="分类名称"
+        rules={[{ required: true, message: "请输入分类名称" }]}
+      >
+        <Input
+          placeholder="例如:2025Q3 回归批次"
+          onChange={(e) => {
+            // Auto-suggest a code only if the user hasn't manually edited it yet.
+            const current = props.form.getFieldValue("code");
+            const touched = props.form.isFieldTouched("code");
+            if (!touched) {
+              props.form.setFieldValue(
+                "code",
+                suggestCode(e.target.value, props.existing)
+              );
+            }
+          }}
+        />
+      </Form.Item>
+      <Form.Item
+        name="code"
+        label="分类编码"
+        extra="1-32 字符,允许中文/字母/数字/-/_,后续作为导入/查询的标识,确定后不可修改"
+        rules={[
+          { required: true, message: "请输入分类编码" },
+          { pattern: /^[\w一-鿿\-]+$/u, message: "仅允许中英文字母、数字、下划线、连字符" },
+          { max: 32, message: "不可超过 32 字符" },
+        ]}
+      >
+        <Input placeholder="例如:2025q3-batch" />
+      </Form.Item>
+      <Form.Item name="description" label="备注(可选)">
+        <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
+        <Space>
+          <Button onClick={props.onCancel}>取消</Button>
+          <Button type="primary" htmlType="submit" loading={submitting}>创建</Button>
+        </Space>
+      </Form.Item>
+    </Form>
+  );
+}
+
+function ManageCategories(props: {
+  categories: TestCategory[];
+  onChanged: () => Promise<void> | void;
+  onCreateClick: () => void;
+}) {
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const custom = props.categories.filter((c) => c.is_custom);
+  const system = props.categories.filter((c) => !c.is_custom);
+  return (
+    <div>
+      <Space style={{ marginBottom: 12 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={props.onCreateClick}>
+          新建业务分类
+        </Button>
+        <span style={{ color: "#999", fontSize: 12 }}>
+          自定义分类用于按批次/版本/客户隔离评测数据;系统分类不可删除。
+        </span>
+      </Space>
+      <Table<TestCategory>
+        size="small"
+        rowKey="code"
+        pagination={false}
+        dataSource={[...custom, ...system]}
+        columns={[
+          {
+            title: "分类",
+            dataIndex: "name_zh",
+            render: (v: string, row) => (
+              <Space>
+                {row.is_custom && <Tag color="purple">自定义</Tag>}
+                {!row.is_custom && <Tag color="blue">系统</Tag>}
+                <span>{v}</span>
+              </Space>
+            ),
+          },
+          { title: "编码", dataIndex: "code", width: 160 },
+          { title: "slug", dataIndex: "slug", width: 200, render: (v: string) => <code>{v}</code> },
+          {
+            title: "描述",
+            dataIndex: "description",
+            ellipsis: true,
+            render: (v: string) => v || "—",
+          },
+          {
+            title: "操作",
+            width: 100,
+            render: (_: any, row) =>
+              row.is_custom ? (
+                <Popconfirm
+                  title="删除该自定义分类?"
+                  description="分类下若仍有测试样本则无法删除。"
+                  okText="删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={async () => {
+                    setDeleting(row.code);
+                    try {
+                      await testsetsApi.deleteCategory(row.code);
+                      message.success(`已删除分类 ${row.code}`);
+                      await props.onChanged();
+                    } catch {
+                      /* interceptor shows error */
+                    } finally {
+                      setDeleting(null);
+                    }
+                  }}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={deleting === row.code}
+                  >
+                    删除
+                  </Button>
+                </Popconfirm>
+              ) : (
+                <Tooltip title="系统内置分类不可删除">
+                  <Button size="small" type="text" disabled icon={<TagsOutlined />}>
+                    受保护
+                  </Button>
+                </Tooltip>
+              ),
+          },
+        ]}
+      />
     </div>
   );
 }

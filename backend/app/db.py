@@ -99,12 +99,37 @@ def _run_inline_migrations() -> None:
     MIGRATIONS = [
         # (description, predicate_sql, action_sql)
         # Predicate should return 1+ rows if migration is NEEDED, else 0 rows.
+        # ``action_sql`` may be a single SQL string or a list of strings
+        # (executed in order, one execute() per entry — sqlite3 forbids
+        # multiple statements per cursor.execute).
         # v1: rename expected_answer → agent_answer on testcases (2026-06-17)
         (
             "rename testcases.expected_answer → agent_answer",
             "SELECT 1 FROM pragma_table_info('testcases') WHERE name='expected_answer'",
             "ALTER TABLE testcases RENAME COLUMN expected_answer TO agent_answer",
         ),
+        # v2: add is_custom to test_categories to distinguish user-defined
+        # business categories from the 13 seeded self-eval ones (2026-07-01).
+        # Predicate returns 1 row when the column is MISSING — i.e. the
+        # migration is still needed (inverse of the v1 "rename if exists"
+        # pattern, because v2 must NOT run on schemas that already have the
+        # column or it would error on duplicate ADD COLUMN).
+        (
+            "add test_categories.is_custom",
+            """SELECT 1 FROM test_categories
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM pragma_table_info('test_categories')
+                   WHERE name='is_custom'
+               )""",
+            "ALTER TABLE test_categories ADD COLUMN is_custom BOOLEAN DEFAULT 0 NOT NULL",
+        ),
+        # NOTE on column widths:
+        # The TestCategory.code PK + TestCase.category_code FK were widened
+        # from String(8) to String(64) in models.py to fit user-defined codes
+        # like "批次v1". No DDL migration is required because SQLite uses type
+        # affinity and does not enforce VARCHAR(n) length — existing rows
+        # accept arbitrary-length strings today, and SQLAlchemy will declare
+        # the wider type on the next create_all() (e.g. fresh dev DB).
     ]
 
     with engine.begin() as conn:
@@ -123,7 +148,9 @@ def _run_inline_migrations() -> None:
             if not needed:
                 continue
             try:
-                conn.execute(text(action_sql))
+                statements = action_sql if isinstance(action_sql, list) else [action_sql]
+                for stmt in statements:
+                    conn.execute(text(stmt))
                 import logging
                 logging.getLogger(__name__).info("✅ migration applied: %s", desc)
             except Exception as exc:  # pragma: no cover

@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------------------- Common ----------------------
@@ -47,6 +47,40 @@ class TestCategoryOut(_OrmBase):
     name_en: str
     description: str = ""
     mapped_skill_id: Optional[str] = None
+    is_custom: bool = False
+
+
+class TestCategoryCreate(BaseModel):
+    """Body for POST /api/testsets/categories — user-defined business category.
+
+    The created row always has `is_custom=True` and `mapped_skill_id=None`,
+    so it is decoupled from the 13 seeded self-eval skill categories.
+    """
+
+    code: str = Field(min_length=1, max_length=64, description="业务分类编码")
+    name_zh: str = Field(min_length=1, max_length=128)
+    name_en: Optional[str] = Field(default=None, max_length=128)
+    description: str = Field(default="", max_length=2000)
+    slug: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("code")
+    @classmethod
+    def _validate_code(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("code cannot be blank")
+        # Allow Chinese / ASCII letters / digits / dash / underscore. Whitespace
+        # and other punctuation would break URL keys, tree labels, and SQL LIKE
+        # queries the user might paste in.
+        import re as _re
+
+        if not _re.match(r"^[\w一-鿿\-]+$", v, flags=_re.UNICODE):
+            raise ValueError(
+                "code 仅允许中英文字母、数字、下划线、连字符 (1-32 字符)"
+            )
+        if len(v) > 32:
+            raise ValueError("code 长度不可超过 32 字符")
+        return v
 
 
 # ---------------------- TestCase ----------------------

@@ -22,6 +22,7 @@ from ..schemas import (
     TestCaseCreate,
     TestCaseDetail,
     TestCaseUpdate,
+    TestCategoryCreate,
     TestCategoryOut,
 )
 from ..services import fetch_iwencai
@@ -102,9 +103,86 @@ def _normalize_raw(raw: dict) -> dict:
 # ----------------------------------------------------------------------------
 # Categories
 # ----------------------------------------------------------------------------
+def _derive_slug(code: str) -> str:
+    """Best-effort ASCII slug for a user-defined category code.
+
+    Seeded categories use plain English slugs (`event-and-concept-stock-selection`),
+    so we prefix custom ones with `c-` to keep them in a separate namespace and
+    prevent accidental collisions if a user later picks a code that transliterates
+    to a known slug.
+    """
+    import re as _re
+
+    base = _re.sub(r"[^a-z0-9]+", "-", code.lower()).strip("-") or "custom"
+    return f"c-{base[:60]}"
+
+
 @router.get("/categories", response_model=list[TestCategoryOut])
 def list_categories(db: Session = Depends(get_db)):
-    return db.query(TestCategory).order_by(TestCategory.code).all()
+    # Custom categories first (so the management UI shows them prominently),
+    # then seed categories sorted by code.
+    return (
+        db.query(TestCategory)
+        .order_by(TestCategory.is_custom.desc(), TestCategory.code.asc())
+        .all()
+    )
+
+
+@router.post("/categories", response_model=TestCategoryOut)
+def create_category(body: TestCategoryCreate, db: Session = Depends(get_db)):
+    if db.get(TestCategory, body.code):
+        raise HTTPException(400, f"Category code '{body.code}' already exists")
+    if body.code in SELF_SKILL_EN_SLUGS:
+        # Defensive guard — even though validator allows Chinese, "01".."13"
+        # numerically collide with seed codes; reject to avoid silent override.
+        raise HTTPException(400, f"Category code '{body.code}' is reserved")
+
+    slug = body.slug or _derive_slug(body.code)
+    # Ensure slug uniqueness — append numeric suffix on collision.
+    base_slug = slug
+    n = 1
+    while db.query(TestCategory).filter_by(slug=slug).first():
+        n += 1
+        slug = f"{base_slug}-{n}"
+        if n > 100:
+            raise HTTPException(500, "Failed to allocate unique slug")
+
+    cat = TestCategory(
+        code=body.code,
+        slug=slug,
+        name_zh=body.name_zh,
+        name_en=body.name_en or body.name_zh,
+        description=body.description,
+        mapped_skill_id=None,
+        is_custom=True,
+    )
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return cat
+
+
+@router.delete("/categories/{code}")
+def delete_category(code: str, db: Session = Depends(get_db)):
+    cat = db.get(TestCategory, code)
+    if not cat:
+        raise HTTPException(404, f"Category {code} not found")
+    if not cat.is_custom:
+        raise HTTPException(
+            409,
+            f"Category '{code}' 是系统内置分类,不可删除(只允许删除用户自定义分类)",
+        )
+    in_use = (
+        db.query(TestCase).filter_by(category_code=code).count()
+    )
+    if in_use:
+        raise HTTPException(
+            409,
+            f"Category '{code}' 下仍有 {in_use} 条测试样本,无法删除。请先清空样本。",
+        )
+    db.delete(cat)
+    db.commit()
+    return {"deleted": code}
 
 
 # ----------------------------------------------------------------------------
@@ -305,7 +383,12 @@ def import_from_iwencai(body: IwencaiImportRequest, db: Session = Depends(get_db
 
 @router.post("/scan-disk", response_model=ScanDiskResponse)
 def scan_disk(db: Session = Depends(get_db)):
-    """Walk the 数据测试集/ tree and upsert all *.json into the DB."""
+    """Walk the 自研评测测试集/ tree and upsert all *.json into the DB.
+
+    Each file is a top-level JSON array; every element is one test case using
+    the legacy Chinese-keyed schema (or the new English-keyed one). File names
+    follow `<NN>-<slug>.json` so the category code is parsed from the filename.
+    """
     root: Path = settings.testsets_root_abs
     if not root.exists():
         raise HTTPException(500, f"Testsets root {root} does not exist")
@@ -323,25 +406,26 @@ def scan_disk(db: Session = Depends(get_db)):
     skipped = 0
 
     slug_to_code = {v: k for k, v in SELF_SKILL_EN_SLUGS.items()}
-    for sub in sorted(root.iterdir()):
-        if not sub.is_dir():
+    for f in sorted(root.iterdir()):
+        if not f.is_file() or f.suffix != ".json":
             continue
-        # category dirs look like "12-financial-logical-reasoning"
-        m = re.match(r"^(\d{2})-(.+)$", sub.name)
+        # category files look like "12-financial-logical-reasoning.json"
+        m = re.match(r"^(\d{2})-(.+)\.json$", f.name)
         if m:
             code = m.group(1)
         else:
-            slug = sub.name
+            slug = f.stem
             code = slug_to_code.get(slug)
             if not code:
                 continue
-        for f in sorted(sub.glob("*.json")):
+        try:
+            payload = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            skipped += 1
+            continue
+        raws = payload if isinstance(payload, list) else [payload]
+        for raw in raws:
             scanned += 1
-            try:
-                raw = json.loads(f.read_text(encoding="utf-8"))
-            except Exception:
-                skipped += 1
-                continue
             norm = _normalize_raw(raw)
             if not norm.get("question"):
                 skipped += 1

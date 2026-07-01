@@ -34,8 +34,9 @@ DB_SCHEMA_BRIEF = """
 
 skills(id, family, code, name_zh, name_en, schema_version, one_liner, golden_case_count)
   · family ∈ {'self','competitor','e2e'}, code ∈ '01'..'14'
-test_categories(code, slug, name_zh, name_en, mapped_skill_id)
-  · 13 个测试集分类
+test_categories(code, slug, name_zh, name_en, mapped_skill_id, is_custom)
+  · 测试集分类。内置 13 类自研评测 Skill(代码形如 '01'..'13'),
+    以及用户在前端"分类管理"中创建的自定义业务分类(代码可为中文/语义名,is_custom=1)
 testcases(id, source_id, category_code, question, language, has_charts,
           inferred_difficulty, tags, imported_from, created_at)
 runs(id, batch_id, testcase_id, skill_id, judge_model, judge_provider,

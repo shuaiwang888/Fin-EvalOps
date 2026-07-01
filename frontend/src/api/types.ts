@@ -30,6 +30,7 @@ export interface TestCategory {
   name_en: string;
   description?: string;
   mapped_skill_id?: string | null;
+  is_custom: boolean;
 }
 
 export interface TestCaseBrief {

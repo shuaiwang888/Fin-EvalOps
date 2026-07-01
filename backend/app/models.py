@@ -50,16 +50,23 @@ class Skill(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
-# ---------------------- Test categories (1:1 with self-eval skills 01..13) ----------
+# ---------------------- Test categories (seeded 01..13 + user-defined custom) ------
 class TestCategory(Base):
     __tablename__ = "test_categories"
 
-    code: Mapped[str] = mapped_column(String(8), primary_key=True)  # 01..13
+    # Seeded categories use short codes like "01"..13"; user-created custom
+    # categories may use longer semantic codes (e.g. "批次v1", "batch-2025q3").
+    # 64 chars fits both comfortably and is the upper bound enforced by the
+    # POST /api/testsets/categories validator.
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
     slug: Mapped[str] = mapped_column(String(128), unique=True)
     name_zh: Mapped[str] = mapped_column(String(128))
     name_en: Mapped[str] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, default="")
     mapped_skill_id: Mapped[Optional[str]] = mapped_column(String(64), default=None)
+    # True for user-defined categories (created via POST /api/testsets/categories).
+    # Seeded categories from skill_loader / scan_disk stay False and cannot be deleted.
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     testcases: Mapped[list["TestCase"]] = relationship(back_populates="category")
 
@@ -70,8 +77,10 @@ class TestCase(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=_uuid)
     source_id: Mapped[str] = mapped_column(String(64), index=True)  # ans_xxx
+    # FK width must match TestCategory.code (String(64)) — widened from 8 to allow
+    # custom category codes longer than 2 digits.
     category_code: Mapped[str] = mapped_column(
-        String(8), ForeignKey("test_categories.code"), index=True
+        String(64), ForeignKey("test_categories.code"), index=True
     )
     file_path: Mapped[Optional[str]] = mapped_column(Text, default=None)
     source: Mapped[str] = mapped_column(String(32), default="iwencai")

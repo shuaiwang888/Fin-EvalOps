@@ -11,6 +11,22 @@ export const testsetsApi = {
       .get<TestCategory[]>("/api/testsets/categories")
       .then((r) => r.data),
 
+  createCategory: (body: {
+    code: string;
+    name_zh: string;
+    name_en?: string;
+    description?: string;
+    slug?: string;
+  }) =>
+    http
+      .post<TestCategory>("/api/testsets/categories", body)
+      .then((r) => r.data),
+
+  deleteCategory: (code: string) =>
+    http
+      .delete<{ deleted: string }>(`/api/testsets/categories/${encodeURIComponent(code)}`)
+      .then((r) => r.data),
+
   list: (params: {
     category?: string;
     language?: string;
