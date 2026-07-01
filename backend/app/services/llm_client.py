@@ -142,6 +142,16 @@ class SchemaValidationError(LLMError):
     pass
 
 
+class LLMTruncatedError(LLMError):
+    """LLM hit max_tokens / returned a partial JSON object.
+
+    Callers should NOT try to recover — a truncated judge output is
+    unreliable because downstream fields (dimension_scores, caps) may
+    be entirely missing. Best UX: fail the run with a clear error_msg.
+    """
+    pass
+
+
 @dataclass
 class LLMResult:
     data: Dict[str, Any]
@@ -429,36 +439,62 @@ def _call_anthropic(
     )
     tin = resp.usage.input_tokens
     tout = resp.usage.output_tokens
+    stop_reason = getattr(resp, "stop_reason", None)
+    truncated = stop_reason == "max_tokens"
+
     for block in resp.content:
         if getattr(block, "type", None) == "tool_use" and block.name == tool_name:
+            if truncated:
+                # tool_use block exists but LLM ran out of tokens — JSON
+                # is likely incomplete. Refuse to return partial data.
+                raise LLMTruncatedError(
+                    f"LLM hit max_tokens ({max_tokens}) before completing "
+                    f"the tool_use block; refusing partial eval data."
+                )
             return block.input, json.dumps(block.input, ensure_ascii=False), tin, tout
+
     # Fallback: many Anthropic-compatible APIs (e.g. minimax) put JSON in
     # a text block instead of honouring tool_use. Try to extract JSON from
-    # any text block. Pre-sanitize before validation so common parallel-array
-    # mistakes don't kill the eval. Even if strict validation still fails,
-    # return the parsed data so downstream evaluator sanitizers can recover.
+    # any text block. If we hit max_tokens we MUST verify the JSON parses
+    # cleanly — partial JSON here is the most common cause of mysterious
+    # 0.00 scores (sanitizers silently fill defaults).
     for block in resp.content:
         if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip():
             try:
                 parsed = _extract_json(block.text)
-                parsed = _sanitize_judge_for_validation(parsed)
-                try:
-                    _validate_schema(parsed, schema)
-                except SchemaValidationError:
-                    # Even strict validation failed — return anyway with a
-                    # warning. Evaluator sanitizers may still recover.
-                    log.warning(
-                        "Provider %s text-block JSON didn't fully match schema; "
-                        "passing through for downstream recovery.",
-                        spec.provider,
+            except LLMError as exc:
+                if truncated:
+                    raise LLMTruncatedError(
+                        f"LLM hit max_tokens; JSON unparseable: {exc}"
+                    ) from exc
+                continue
+            parsed = _sanitize_judge_for_validation(parsed)
+            try:
+                _validate_schema(parsed, schema)
+            except SchemaValidationError:
+                if truncated:
+                    raise LLMTruncatedError(
+                        "LLM hit max_tokens; sanitized JSON still failed "
+                        "schema validation — refusing partial eval data."
                     )
-                log.info(
-                    "Provider %s returned JSON in text block (no tool_use); recovered.",
+                log.warning(
+                    "Provider %s text-block JSON didn't fully match schema; "
+                    "passing through for downstream recovery.",
                     spec.provider,
                 )
-                return parsed, block.text, tin, tout
-            except LLMError:
-                continue
+            if truncated:
+                # Even strict validation passed (unlikely for truncations),
+                # still refuse — max_tokens usually means we got an
+                # incomplete view of the response.
+                raise LLMTruncatedError(
+                    f"LLM hit max_tokens ({max_tokens}); refusing eval data "
+                    f"that may be incomplete."
+                )
+            log.info(
+                "Provider %s returned JSON in text block (no tool_use); recovered.",
+                spec.provider,
+            )
+            return parsed, block.text, tin, tout
     raw = json.dumps([b.model_dump() if hasattr(b, "model_dump") else str(b) for b in resp.content])
     raise LLMError(f"Anthropic returned no tool_use block: {raw[:300]}")
 

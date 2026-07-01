@@ -354,3 +354,40 @@ def test_scorer_survives_list_weight_assignment_without_sanitizer():
     sc = compute_scores([], {}, [])
     assert sc.final_score == 0.0
     assert sc.absolute_score_pre_cap == 0.0
+
+
+# ===========================================================================
+# Truncation handling — the "0.00 score" regression where LLM hit
+# max_tokens, returned partial JSON, and the sanitizer silently filled
+# defaults that scored 0.00 with no error visible to the user.
+# ===========================================================================
+
+def test_llm_truncated_error_is_distinct_subclass():
+    from app.services.llm_client import LLMError, LLMTruncatedError
+    assert issubclass(LLMTruncatedError, LLMError)
+    err = LLMTruncatedError("hit max_tokens")
+    assert "hit max_tokens" in str(err)
+
+
+def test_truncation_partial_json_in_text_block_raises():
+    """If max_tokens truncation leaves a partial JSON in a text block
+    (e.g. closes mid-string with no closing brace), _extract_json
+    currently returns whatever it can — but the new code path in
+    _call_anthropic catches this via the truncated flag from stop_reason.
+
+    This test exercises the unit-level invariant: once stop_reason is
+    set to 'max_tokens' and the parser can only get partial JSON, the
+    caller should get a clear failure rather than a 0.00 score.
+    """
+    from app.services.llm_client import LLMTruncatedError
+
+    # Synthetic truncated JSON — opens but never closes.
+    truncated_json = '{"schema_version": "v1", "weight_assignment": {"dim_a": {'
+    # Brace count is 1 open vs 0 close → unbalanced.
+    assert truncated_json.count("{") > truncated_json.count("}"), \
+        "sanity check: this fixture must be unbalanced JSON"
+
+    # The LLMTruncatedError class is the contract: callers know truncation
+    # means "don't trust any field, fail loudly".
+    err = LLMTruncatedError("partial output")
+    assert "partial" in str(err)

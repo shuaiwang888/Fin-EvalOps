@@ -212,11 +212,19 @@ def evaluate_run(run_id: str) -> None:
                     user=user_payload,
                     schema=EVAL_OUTPUT_SCHEMA,
                     tool_name="submit_evaluation",
-                    max_tokens=8000,  # bumped from 6000 — narrative_review + root_causes can run long
+                    max_tokens=16000,  # bumped from 8000 — long answers + many
+                                       # root_causes can overflow the budget; if
+                                       # still truncated the call raises
+                                       # LLMTruncatedError (caught below)
                     temperature=0.15,
                 )
             except llm_client.SchemaValidationError as exc:
                 _fail(db, run, channel, f"判分输出不符合 schema:{exc}")
+                return
+            except llm_client.LLMTruncatedError as exc:
+                _fail(db, run, channel,
+                      f"LLM 输出超过 16000 token 上限被截断,放弃本次评测:"
+                      f"{exc}。可联系管理员提升上限或精简输入。")
                 return
             except Exception as exc:
                 _fail(db, run, channel, f"LLM 调用失败:{exc}")
