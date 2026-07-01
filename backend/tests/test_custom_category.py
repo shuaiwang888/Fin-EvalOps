@@ -226,6 +226,81 @@ def test_import_file_with_custom_category():
         Path(db_path).unlink(missing_ok=True)
 
 
+def test_import_file_preserves_tags_chinese_keyed():
+    """`tags` field on a Chinese-keyed JSON must round-trip into the DB row.
+
+    Regression for: previously _normalize_raw dropped the `tags` key for
+    Chinese-keyed payloads, and import_file never wrote tags=... to the
+    TestCase ORM, so any auxiliary metadata packed into `tags` by upstream
+    exporters (e.g. convert_part06.py) silently disappeared on import.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        db_path = tmp.name
+    try:
+        with _fresh_client(db_path) as client:
+            client.post("/api/testsets/categories", json={
+                "code": "tagged", "name_zh": "tagged batch",
+            })
+            payload = [
+                {
+                    "问题": "Q?", "答案": "A.", "id": "s1",
+                    "tags": ["agent:9662", '{"primary_intent":"事件概念型标的筛选"}'],
+                },
+            ]
+            files = {"file": ("a.json", json.dumps(payload), "application/json")}
+            r = client.post(
+                "/api/testsets/import-file?category_code=tagged",
+                files=files,
+            )
+            assert r.status_code == 200, r.text
+            assert r.json() == {"inserted": 1, "total_in_file": 1}
+
+            r = client.get("/api/testsets?category=tagged&page_size=5")
+            tc_id = r.json()["items"][0]["id"]
+
+            r = client.get(f"/api/testsets/{tc_id}")
+            assert r.status_code == 200
+            body = r.json()
+            assert body["tags"] == [
+                "agent:9662",
+                '{"primary_intent":"事件概念型标的筛选"}',
+            ], f"tags dropped on import: got {body['tags']!r}"
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_import_file_preserves_tags_english_keyed():
+    """English-keyed passthrough should still work after the fix."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        db_path = tmp.name
+    try:
+        with _fresh_client(db_path) as client:
+            client.post("/api/testsets/categories", json={
+                "code": "tagged-en", "name_zh": "english tags",
+            })
+            payload = [{
+                "source_id": "en1",
+                "source": "manual",
+                "question": "Q?",
+                "agent_answer": "A.",
+                "tags": ["hello", "world"],
+            }]
+            files = {"file": ("a.json", json.dumps(payload), "application/json")}
+            r = client.post(
+                "/api/testsets/import-file?category_code=tagged-en",
+                files=files,
+            )
+            assert r.status_code == 200
+
+            r = client.get("/api/testsets?category=tagged-en&page_size=5")
+            tc_id = r.json()["items"][0]["id"]
+
+            r = client.get(f"/api/testsets/{tc_id}")
+            assert r.json()["tags"] == ["hello", "world"]
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Migration tests (DB-level, mirror test_field_rename.py pattern)
 # ---------------------------------------------------------------------------

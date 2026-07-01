@@ -96,6 +96,9 @@ def _normalize_raw(raw: dict) -> dict:
             "agent_answer": raw.get("agent_answer") or raw.get("答案", ""),
             "reasoning_trace": raw.get("链路数据") or [],
             "context_history": raw.get("上下文"),
+            # Preserve auxiliary metadata (audit trail, batch tags, etc.)
+            # — the English-keyed passthrough branch below already does this.
+            "tags": raw.get("tags"),
         }
     return raw
 
@@ -325,6 +328,7 @@ async def import_file(
             agent_answer=norm.get("agent_answer", ""),
             reasoning_trace=norm.get("reasoning_trace"),
             context_history=norm.get("context_history"),
+            tags=norm.get("tags"),
             imported_from="file",
             language=_detect_language(norm["question"]),
             has_charts=_has_charts(norm.get("agent_answer", "")),
@@ -367,6 +371,7 @@ def import_from_iwencai(body: IwencaiImportRequest, db: Session = Depends(get_db
             agent_answer=norm.get("agent_answer", ""),
             reasoning_trace=norm.get("reasoning_trace"),
             context_history=norm.get("context_history"),
+            tags=norm.get("tags"),
             imported_from="fetch",
             language=_detect_language(norm["question"]),
             has_charts=_has_charts(norm.get("agent_answer", "")),
@@ -440,6 +445,7 @@ def scan_disk(db: Session = Depends(get_db)):
                 existing.agent_answer = norm.get("agent_answer", "")
                 existing.reasoning_trace = norm.get("reasoning_trace")
                 existing.context_history = norm.get("context_history")
+                existing.tags = norm.get("tags")
                 existing.file_path = str(f)
                 existing.language = _detect_language(norm["question"])
                 existing.has_charts = _has_charts(norm.get("agent_answer", ""))
@@ -457,6 +463,7 @@ def scan_disk(db: Session = Depends(get_db)):
                     agent_answer=norm.get("agent_answer", ""),
                     reasoning_trace=norm.get("reasoning_trace"),
                     context_history=norm.get("context_history"),
+                    tags=norm.get("tags"),
                     file_path=str(f),
                     imported_from="file",
                     language=_detect_language(norm["question"]),
