@@ -331,9 +331,10 @@ def _sanitize_judge_for_validation(data: Any, schema: dict | None = None) -> Any
        (or vice versa) — coerced to the safe default {} or [] so
        downstream code that calls `.get()` on these fields never crashes
        with 'list' object has no attribute 'get'.
-    5. `weight_assignment` wrapped as `{"item": [...]}` (handled in
-       evaluator._sanitize_judge_output too; here we do a lighter pass so
-       it survives schema validation in the call site).
+    5. `weight_assignment` / `dimension_scores` wrapped as `{"item": [...]}`
+       — flattened into the proper per-dim dict shape. CRITICAL: without
+       this, the scorer sees only one non-dict key and skips every dim
+       → final_score = 0.
     """
     if not isinstance(data, dict):
         return data
@@ -370,6 +371,105 @@ def _sanitize_judge_for_validation(data: Any, schema: dict | None = None) -> Any
             data[field] = _parallel_array_to_list(v)
 
     # matched_golden_cases: bare string → split on common separators
+    mgc = data.get("matched_golden_cases")
+    if isinstance(mgc, str):
+        parts = [p.strip() for p in re.split(r"[;\n|,]|Case\s+\d+[:：]", mgc) if p.strip()]
+        data["matched_golden_cases"] = parts if parts else []
+
+    def _coerce_numeric(item: dict, field_name: str) -> None:
+        v = item.get(field_name)
+        if isinstance(v, str):
+            try:
+                item[field_name] = float(v)
+            except (ValueError, TypeError):
+                item[field_name] = 0
+
+    # dimension_scores: per-dim raw_score string → float
+    ds = data.get("dimension_scores")
+    if isinstance(ds, dict):
+        for dim, sc in ds.items():
+            if isinstance(sc, dict):
+                _coerce_numeric(sc, "raw_score")
+
+    # root_causes: per-cause raw_score string → float
+    rc = data.get("root_causes")
+    if isinstance(rc, list):
+        for item in rc:
+            if isinstance(item, dict):
+                _coerce_numeric(item, "raw_score")
+
+    # caps: per-cap score_ceiling string → float
+    caps = data.get("caps")
+    if isinstance(caps, list):
+        for item in caps:
+            if isinstance(item, dict):
+                _coerce_numeric(item, "score_ceiling")
+
+    # 5) Unwrap {"item": [...]} wrapper on dict-shaped fields. Without this,
+    #    evaluator's downstream scorer sees only one key (item) and skips
+    #    every dim — final_score = 0. We can't reliably know each entry's
+    #    dim_name without the skill spec, so fall back to positional labels.
+    #    The evaluator's _sanitize_judge_output does a second pass with
+    #    skill_row.dimensions to upgrade the labels to canonical names.
+    _ENTRY_KNOWN = {
+        "weight_assignment": {"dynamic_weight", "applicability", "rationale"},
+        "dimension_scores": {"raw_score", "evidence", "confidence", "summary"},
+    }
+    for field, known in _ENTRY_KNOWN.items():
+        v = data.get(field)
+        if not isinstance(v, dict) or not isinstance(v.get("item"), list):
+            continue
+        items = v["item"]
+        flat: dict = {}
+        for i, entry in enumerate(items):
+            if not isinstance(entry, dict):
+                continue
+            extra = [k for k in entry.keys() if k not in known]
+            dim_name = extra[0] if extra else f"dim_{i}"
+            clean = {k: val for k, val in entry.items()
+                     if k in known and val not in (None, "")}
+            flat[dim_name] = clean
+        if flat:
+            data[field] = flat
+
+    return data
+
+    # matched_golden_cases: bare string → split on common separators
+    mgc = data.get("matched_golden_cases")
+    if isinstance(mgc, str):
+        parts = [p.strip() for p in re.split(r"[;\n|,]|Case\s+\d+[:：]", mgc) if p.strip()]
+        data["matched_golden_cases"] = parts if parts else []
+
+    def _coerce_numeric(item: dict, field_name: str) -> None:
+        v = item.get(field_name)
+        if isinstance(v, str):
+            try:
+                item[field_name] = float(v)
+            except (ValueError, TypeError):
+                item[field_name] = 0
+
+    # dimension_scores: per-dim raw_score string → float
+    ds = data.get("dimension_scores")
+    if isinstance(ds, dict):
+        for dim, sc in ds.items():
+            if isinstance(sc, dict):
+                _coerce_numeric(sc, "raw_score")
+
+    # root_causes: per-cause raw_score string → float
+    rc = data.get("root_causes")
+    if isinstance(rc, list):
+        for item in rc:
+            if isinstance(item, dict):
+                _coerce_numeric(item, "raw_score")
+
+    # caps: per-cap score_ceiling string → float
+    caps = data.get("caps")
+    if isinstance(caps, list):
+        for item in caps:
+            if isinstance(item, dict):
+                _coerce_numeric(item, "score_ceiling")
+
+    return data
     mgc = data.get("matched_golden_cases")
     if isinstance(mgc, str):
         parts = [p.strip() for p in re.split(r"[;\n|,]|Case\s+\d+[:：]", mgc) if p.strip()]

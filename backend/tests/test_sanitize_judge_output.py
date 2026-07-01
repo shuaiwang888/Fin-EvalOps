@@ -59,8 +59,11 @@ def test_handles_non_dict_input():
     assert _sanitize_judge_output("not a dict", "test") == "not a dict"
 
 
-def test_skips_item_entries_with_no_dimension_key():
-    """If we can't find a dimension name in an entry, skip it."""
+def test_unwraps_item_entries_with_positional_dim_name_fallback():
+    """If an entry has no extra dim-name key (only known fields), we
+    fall back to positional names `dim_0`, `dim_1` so the score still
+    computes. (Upgraded later by evaluator._sanitize_judge_output using
+    the skill spec, if available.)"""
     data = {
         "weight_assignment": {
             "item": [
@@ -70,9 +73,98 @@ def test_skips_item_entries_with_no_dimension_key():
         }
     }
     fixed = _sanitize_judge_output(data, "test")
-    # Only dim_b should make it through
-    assert "dim_b" in fixed["weight_assignment"]
-    assert len(fixed["weight_assignment"]) == 1
+    # First entry → dim_0 (positional fallback), second entry → dim_b (explicit)
+    assert fixed["weight_assignment"]["dim_0"]["dynamic_weight"] == 18
+    assert fixed["weight_assignment"]["dim_b"]["dynamic_weight"] == 15
+    assert len(fixed["weight_assignment"]) == 2
+
+
+def test_dimension_scores_item_unwrap_regression():
+    """REGRESSION: Reproduces the user's bug from 2026-07-01 — the live
+    Space returned many 0.0 scores. Root cause: judge model wrapped
+    dimension_scores in `{"item": [entry, ...]}` with each entry having
+    only known fields (no dim-name key). The OLD sanitizer left the
+    wrapper intact, scorer saw `{"item": [...]}` and skipped every dim
+    (active_dimensions=0 → final_score=0.0). The fix flattens the item
+    array into a per-dim dict."""
+    from app.services.scorer import compute_scores
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": {
+            "item": [
+                {"dynamic_weight": 20, "applicability": "relevant"},
+                {"dynamic_weight": 8, "applicability": "supplementary"},
+                {"dynamic_weight": 20, "applicability": "relevant"},
+                {"dynamic_weight": 16, "applicability": "relevant"},
+                {"dynamic_weight": 14, "applicability": "relevant"},
+                {"dynamic_weight": 12, "applicability": "relevant"},
+                {"dynamic_weight": 5, "applicability": "supplementary"},
+                {"dynamic_weight": 5, "applicability": "relevant"},
+            ],
+        },
+        "dimension_scores": {
+            "item": [
+                {"raw_score": 20, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 60, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 30, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 80, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 60, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 40, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 70, "evidence": [{"pointer": "q"}]},
+                {"raw_score": 30, "evidence": [{"pointer": "q"}]},
+            ],
+        },
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": {},
+    }
+    fixed = _sanitize_judge_output(raw, "test")
+    # Both fields must be unwrapped to dict-of-dim
+    assert isinstance(fixed["weight_assignment"], dict)
+    assert isinstance(fixed["dimension_scores"], dict)
+    assert len(fixed["weight_assignment"]) == 8
+    assert len(fixed["dimension_scores"]) == 8
+
+    # And the scorer MUST produce a non-zero score
+    sc = compute_scores(
+        fixed["weight_assignment"],
+        fixed["dimension_scores"],
+        fixed["caps"],
+    )
+    # Before the fix this was 0.0. Now it must be > 0.
+    assert sc.final_score > 0, f"regression! final_score={sc.final_score}, expected > 0"
+    assert sc.active_dimensions == 8
+    # Weights sum to 100, raw_scores average around 48.75 → weighted ~48.75
+    assert 30 <= sc.final_score <= 70, f"score out of expected band: {sc.final_score}"
+
+
+def test_dimension_scores_item_unwrap_at_llm_client_layer():
+    """Same regression at the upstream sanitizer (runs before schema
+    validation). Without this, downstream sanitizers still need to clean
+    up — defense in depth."""
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    raw = {
+        "weight_assignment": {"item": [
+            {"dynamic_weight": 50, "applicability": "relevant"},
+            {"dynamic_weight": 50, "applicability": "relevant"},
+        ]},
+        "dimension_scores": {"item": [
+            {"raw_score": 80, "evidence": []},
+            {"raw_score": 60, "evidence": []},
+        ]},
+    }
+    out = _sanitize_judge_for_validation(raw)
+    assert isinstance(out["weight_assignment"], dict)
+    assert isinstance(out["dimension_scores"], dict)
+    assert len(out["weight_assignment"]) == 2
+    assert len(out["dimension_scores"]) == 2
+    # Positional fallback names
+    assert "dim_0" in out["dimension_scores"]
+    assert "dim_1" in out["dimension_scores"]
+    # raw_score strings (if any) would be coerced; here they're already numbers
+    assert out["dimension_scores"]["dim_0"]["raw_score"] == 80
 
 
 # ===========================================================================

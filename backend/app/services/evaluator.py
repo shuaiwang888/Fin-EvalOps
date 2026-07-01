@@ -247,7 +247,7 @@ def evaluate_run(run_id: str) -> None:
             # Some providers (esp. Anthropic-compatible endpoints) misinterpret
             # `additionalProperties` schemas and return arrays or wrapped objects.
             # We coerce here so a single bad shape doesn't fail the whole run.
-            data = _sanitize_judge_output(data, channel)
+            data = _sanitize_judge_output(data, channel, skill_row=skill_row)
 
             _emit(channel, "step", {"step": 2, "label": "链路诊断 + 根因归因"})
             _update(db, run, channel, status="scoring", progress=70, current_step="step2")
@@ -368,56 +368,155 @@ def _extract_tool_set(chain: Any) -> set[str]:
 
 
 # ============================================================================
-def _sanitize_judge_output(data: dict, channel: str) -> dict:
+# Known field names per judge-output field. Anything else in an entry is
+# treated as the dimension name (or a fallback positional name is used).
+_WEIGHT_FIELDS = {"dynamic_weight", "applicability", "rationale"}
+_DIM_SCORE_FIELDS = {"raw_score", "evidence", "confidence", "summary"}
+# Explicit keys some judge models use to label the dimension inside an entry.
+_DIM_NAME_KEYS = ("dim_name", "name", "dimension", "key", "id", "label")
+
+
+def _resolve_dim_names(data: dict, n: int, skill_row=None) -> list[str]:
+    """Best-effort list of dimension names for positional mapping.
+
+    Priority:
+    1. Skill row's `dimensions.items[].label` (when known — gives the
+       canonical order and human-readable names).
+    2. Keys already unwrapped from weight_assignment.
+    3. Generic `dim_0`, `dim_1`, ... placeholders.
+    """
+    # 1) Try skill spec
+    if skill_row is not None:
+        dims = skill_row.dimensions if isinstance(skill_row.dimensions, dict) else None
+        items = (dims or {}).get("items") if dims else None
+        if isinstance(items, list) and items:
+            labels: list[str] = []
+            for it in items:
+                lbl = it.get("label") if isinstance(it, dict) else None
+                if lbl:
+                    labels.append(str(lbl))
+            if labels:
+                return labels[:n] if len(labels) >= n else labels + [
+                    f"dim_{i}" for i in range(len(labels), n)
+                ]
+    # 2) Use whatever keys we already have in weight_assignment
+    wa = data.get("weight_assignment")
+    if isinstance(wa, dict):
+        existing = [k for k in wa.keys() if k != "item"]
+        if existing:
+            return existing[:n] + [
+                f"dim_{i}" for i in range(len(existing), n)
+            ]
+    # 3) Placeholder
+    return [f"dim_{i}" for i in range(n)]
+
+
+def _unwrap_item_array(
+    field_data: dict,
+    known_fields: set[str],
+    fallback_dim_names: list[str],
+) -> tuple[dict, int]:
+    """Unwrap `{"item": [entry, ...]}` into a flat dict {dim_name: {...}}.
+
+    Returns (flattened_dict, n_items_unwrapped).
+    Each entry's dim_name is found via:
+    1. Explicit dim-name key (any key not in known_fields)
+    2. Common dim-name keys (dim_name, name, dimension, ...)
+    3. Positional fallback to `fallback_dim_names[i]`
+    """
+    items = field_data.get("item")
+    if not isinstance(items, list):
+        return field_data, 0
+
+    out: dict = {}
+    for i, entry in enumerate(items):
+        if not isinstance(entry, dict):
+            continue
+        # Find dim_name
+        dim_name = None
+        extra = [k for k in entry.keys() if k not in known_fields]
+        if extra:
+            dim_name = extra[0]
+        if dim_name is None:
+            for k in _DIM_NAME_KEYS:
+                if k in entry and isinstance(entry[k], str):
+                    dim_name = entry[k]
+                    break
+        if dim_name is None and i < len(fallback_dim_names):
+            dim_name = fallback_dim_names[i]
+        if dim_name is None:
+            dim_name = f"dim_{i}"
+
+        clean = {k: v for k, v in entry.items()
+                 if k in known_fields and v not in (None, "")}
+        # Don't keep `raw_score: 0` — scorer treats 0 as a real score, not a
+        # missing value. Empty dict still gets a 0 from scorer, which is correct.
+        out[dim_name] = clean
+
+    return out, len(items)
+
+
+def _sanitize_judge_output(data: dict, channel: str, skill_row=None) -> dict:
     """Coerce common LLM output structural mistakes back into the schema shape.
 
     Specifically handles:
     1. `weight_assignment = {"item": [{...}, ...]}` — LLM wrapped the per-dim
-       entries in a single "item" key instead of returning a flat dict keyed by
-       dimension name. We detect the wrapper and re-flatten, using any key on
-       each entry that's not a known field name as the dimension name.
-    2. Missing `dimension_scores` — LLM ran out of tokens. Default to `{}`
-       (run still completes, but final_score will be 0 + a warning).
+       entries in a single "item" key. Re-flatten using known-field detection
+       + positional fallback to skill spec's dimension labels.
+    2. `dimension_scores = {"item": [{...}, ...]}` — same wrap pattern; same
+       unwrap. CRITICAL: without this, scorer sees only one non-dict key and
+       `active_dimensions=0` → final_score = 0.
+    3. Missing `dimension_scores` — LLM ran out of tokens. Default to `{}`.
+    4. `root_causes` / `caps` / `skipped_dimensions` as parallel arrays.
     """
     if not isinstance(data, dict):
         return data
 
-    # 1) Unwrap `weight_assignment.item: [...]` → flat dict
+    # Pre-pass: resolve dimension names. WA's keys are preferred (they were
+    # asked first and the LLM usually follows schema there). If WA was also
+    # wrapped, fall back to the skill spec.
+    n_dims_hint = 0
+    wa_pre = data.get("weight_assignment")
+    if isinstance(wa_pre, dict) and isinstance(wa_pre.get("item"), list):
+        n_dims_hint = max(n_dims_hint, len(wa_pre["item"]))
+    ds_pre = data.get("dimension_scores")
+    if isinstance(ds_pre, dict) and isinstance(ds_pre.get("item"), list):
+        n_dims_hint = max(n_dims_hint, len(ds_pre["item"]))
+
+    if n_dims_hint > 0:
+        dim_names = _resolve_dim_names(data, n_dims_hint, skill_row=skill_row)
+    else:
+        dim_names = []
+
+    # 1) Unwrap weight_assignment.item
     wa = data.get("weight_assignment")
     if isinstance(wa, dict) and isinstance(wa.get("item"), list):
-        flat: dict = {}
-        for entry in wa["item"]:
-            if not isinstance(entry, dict):
-                continue
-            # Known field names; everything else in the entry is treated as the
-            # dimension key (LLM puts it as `{dim_name: ""}` inside the entry)
-            known_fields = {"dynamic_weight", "applicability", "rationale"}
-            extra_keys = [k for k in entry.keys() if k not in known_fields]
-            if not extra_keys:
-                continue
-            dim_name = extra_keys[0]
-            clean = {k: v for k, v in entry.items()
-                     if k in known_fields and v not in (None, "")}
-            flat[dim_name] = clean
-        if flat:
+        flat, n = _unwrap_item_array(wa, _WEIGHT_FIELDS, dim_names)
+        if n > 0:
             data["weight_assignment"] = flat
-            _emit(channel, "step", {"step": 1.5, "label": f"权重已从 {len(wa['item'])} 维 unwrap"})
+            _emit(channel, "step",
+                  {"step": 1.5, "label": f"权重已从 {n} 维 unwrap"})
 
-    # 2) Default missing dimension_scores
+    # 2) Unwrap dimension_scores.item (THIS IS THE KEY FIX — without it,
+    #    scorer sees `{"item": [...]}` and skips every dim → score=0)
+    ds = data.get("dimension_scores")
+    if isinstance(ds, dict) and isinstance(ds.get("item"), list):
+        flat, n = _unwrap_item_array(ds, _DIM_SCORE_FIELDS, dim_names)
+        if n > 0:
+            data["dimension_scores"] = flat
+            _emit(channel, "step",
+                  {"step": 1.5, "label": f"维度评分已从 {n} 项 unwrap"})
+
+    # 3) Default missing dimension_scores
     if not data.get("dimension_scores"):
         data["dimension_scores"] = {}
-        _emit(channel, "step", {"step": 1.5, "label": "dimension_scores 缺失,已默认空(分数会归 0)"})
+        _emit(channel, "step",
+              {"step": 1.5, "label": "dimension_scores 缺失,已默认空(分数会归 0)"})
 
-    # 3) root_causes / caps / matched_golden_cases sometimes arrive as a
-    #    dict of parallel arrays (judge models that don't read the schema
-    #    carefully). Transpose them into the list-of-objects shape the
-    #    rest of the pipeline expects. Defensive duplicate of the same
-    #    sanitization in llm_client._sanitize_judge_for_validation — both
-    #    layers help because cached / legacy payloads may skip the client.
+    # 4) root_causes / caps / skipped_dimensions as parallel arrays
     for field in ("root_causes", "caps", "skipped_dimensions"):
         v = data.get(field)
         if isinstance(v, dict):
-            # Is it a "dict of parallel arrays" → transpose
             list_lengths = [
                 len(x) for x in v.values()
                 if isinstance(x, list) and x
