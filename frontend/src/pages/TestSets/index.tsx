@@ -74,8 +74,20 @@ export default function TestSets() {
   const [showImport, setShowImport] = useState(false);
   const [showIwencai, setShowIwencai] = useState(false);
   const [importCat, setImportCat] = useState<string | undefined>();
+  // File staged inside the import modal — uploaded only when the user clicks
+  // "开始导入". Decoupling selection from upload gives a clear two-step UX
+  // and lets the user change the target category after picking a file.
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
   const [createForm] = Form.useForm();
   const [iwencaiForm] = Form.useForm();
+
+  const resetImportModal = () => {
+    setShowImport(false);
+    setImportCat(undefined);
+    setPendingFile(null);
+    setImporting(false);
+  };
 
   // Category management modal — can be opened in "manage" mode (list + delete)
   // or "create" mode (inline quick-create from a parent modal). `onCreated`
@@ -350,35 +362,65 @@ export default function TestSets() {
       <Modal
         title="导入 JSON 文件"
         open={showImport}
-        onCancel={() => setShowImport(false)}
-        footer={null}
+        onCancel={resetImportModal}
+        okText="开始导入"
+        cancelText="取消"
+        okButtonProps={{
+          disabled: !importCat || !pendingFile,
+          loading: importing,
+        }}
+        onOk={async () => {
+          if (!importCat || !pendingFile) return;
+          setImporting(true);
+          try {
+            const r = await testsetsApi.importFile(pendingFile, importCat);
+            message.success(`已导入 ${r.inserted}/${r.total_in_file} 到分类 ${importCat}`);
+            resetImportModal();
+            mutate();
+          } catch {
+            /* axios interceptor already shows error */
+          } finally {
+            setImporting(false);
+          }
+        }}
       >
         <Form layout="vertical">
           <Form.Item label="目标分类" required>
             {renderCategoryPicker(importCat, setImportCat)}
           </Form.Item>
-          <Upload
-            accept=".json"
-            beforeUpload={async (file) => {
-              if (!importCat) {
-                message.warning("请先选择分类");
-                return false;
+          <Form.Item label="JSON 文件" required>
+            <Upload
+              accept=".json"
+              multiple={false}
+              maxCount={1}
+              showUploadList
+              beforeUpload={(file) => {
+                // Stage the file; actual upload happens on "开始导入".
+                setPendingFile(file as File);
+                return false;  // prevent antd's auto-upload
+              }}
+              onRemove={() => setPendingFile(null)}
+              fileList={
+                pendingFile
+                  ? [{
+                      uid: "0",
+                      name: pendingFile.name,
+                      status: "done",
+                      size: pendingFile.size,
+                    }]
+                  : []
               }
-              try {
-                const r = await testsetsApi.importFile(file as File, importCat);
-                message.success(`已导入 ${r.inserted}/${r.total_in_file}`);
-                setShowImport(false);
-                setImportCat(undefined);
-                mutate();
-              } catch {
-                /* axios interceptor already shows error */
-              }
-              return false;
-            }}
-          >
-            <Button icon={<UploadOutlined />}>选择 .json(单条对象或数组)</Button>
-          </Upload>
-          <div style={{ fontSize: 12, color: "#999", marginTop: 12 }}>
+            >
+              <Button icon={<UploadOutlined />}>选择 .json(单条对象或数组)</Button>
+            </Upload>
+            {pendingFile && (
+              <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
+                已选 {(pendingFile.size / 1024).toFixed(1)} KB ·
+                点 <b>开始导入</b> 上传到分类 <b>{importCat || "(未选)"}</b>
+              </div>
+            )}
+          </Form.Item>
+          <div style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
             支持原始测试集格式 (问题/答案/链路数据 中文字段) 或英文 schema。
             分类支持内置 13 类与用户自定义业务分类。
           </div>
