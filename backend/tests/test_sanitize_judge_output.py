@@ -254,3 +254,103 @@ def test_permissive_fill_fills_missing_required_fields():
     assert "narrative_review" in filled
     assert "root_causes" in filled
     _validate_schema(filled, EVAL_OUTPUT_SCHEMA)
+
+
+# ===========================================================================
+# Field-type coercion (the `'list' object has no attribute 'get'` regression)
+# ===========================================================================
+
+def test_coerces_list_weight_assignment_to_empty_dict():
+    """Reproduces the user bug: judge returns `weight_assignment: [{...}, {...}]`
+    (a list) when the schema expects an object. Without coercion, scorer
+    would crash on `.items()` and the run would fail with `'list' object
+    has no attribute 'get'`."""
+    from app.services.llm_client import _sanitize_judge_for_validation
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": [
+            {"dim_a": {"dynamic_weight": 30, "applicability": "relevant"}},
+            {"dim_b": {"dynamic_weight": 20, "applicability": "supplementary"}},
+        ],   # ← wrong type — should be an object
+        "dimension_scores": {},
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": {},
+    }
+    out = _sanitize_judge_for_validation(raw, schema=EVAL_OUTPUT_SCHEMA)
+    # Must be a dict (or empty) so scorer can call `.items()`
+    assert isinstance(out["weight_assignment"], dict), \
+        f"weight_assignment type wrong: {type(out['weight_assignment'])}"
+    # Scorer's safe path: iterate, see no per-dim dicts, score=0
+    from app.services.scorer import compute_scores
+    sc = compute_scores(out["weight_assignment"], out["dimension_scores"], out["caps"])
+    assert sc.final_score == 0.0
+
+
+def test_coerces_dict_dimension_scores_to_empty_dict():
+    """LLM returned dimension_scores as a single object instead of per-dim
+    nested dict. Without coercion scorer would crash on .items()."""
+    from app.services.llm_client import _sanitize_judge_for_validation
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": {},
+        "dimension_scores": {"raw_score": 80},  # wrong — should be {dim: {...}}
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": {},
+    }
+    out = _sanitize_judge_for_validation(raw, schema=EVAL_OUTPUT_SCHEMA)
+    assert isinstance(out["dimension_scores"], dict)
+    from app.services.scorer import compute_scores
+    # Should NOT raise — coerces to {} if mismatched type
+    sc = compute_scores({}, out["dimension_scores"], out["caps"])
+    assert sc.final_score == 0.0
+
+
+def test_coerces_list_narrative_review_to_empty_dict():
+    from app.services.llm_client import _sanitize_judge_for_validation
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": {},
+        "dimension_scores": {},
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": ["summary text only"],  # wrong type
+    }
+    out = _sanitize_judge_for_validation(raw, schema=EVAL_OUTPUT_SCHEMA)
+    assert isinstance(out["narrative_review"], dict)
+
+
+def test_no_coercion_when_already_correct_type():
+    """Sanity: well-formed data must NOT be touched."""
+    from app.services.llm_client import _sanitize_judge_for_validation
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": {"dim_a": {"dynamic_weight": 30, "applicability": "relevant"}},
+        "dimension_scores": {"dim_a": {"raw_score": 80}},
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": {"summary": "ok"},
+    }
+    out = _sanitize_judge_for_validation(dict(raw), schema=EVAL_OUTPUT_SCHEMA)
+    assert out == raw
+
+
+def test_scorer_survives_list_weight_assignment_without_sanitizer():
+    """Even WITHOUT the sanitizer, scorer should not crash on a list
+    where it expects a dict (defence in depth). It should return 0 with
+    a warning rather than raising."""
+    from app.services.scorer import compute_scores
+
+    # Pre-sanitize is bypassed — feed raw garbage to scorer.
+    sc = compute_scores([], {}, [])
+    assert sc.final_score == 0.0
+    assert sc.absolute_score_pre_cap == 0.0

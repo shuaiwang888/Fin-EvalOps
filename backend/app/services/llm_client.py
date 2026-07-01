@@ -200,7 +200,7 @@ def call_with_schema(
     # Coerce common LLM shape mistakes before strict validation. Without this,
     # judge models that emit `root_causes` / `caps` as parallel arrays
     # would trip the validator and the entire eval would fail.
-    data = _sanitize_judge_for_validation(data)
+    data = _sanitize_judge_for_validation(data, schema=schema)
     try:
         _validate_schema(data, schema)
     except SchemaValidationError as exc:
@@ -208,6 +208,9 @@ def call_with_schema(
         # defaults so the validator sees a complete shape. This keeps the
         # eval pipeline alive when the judge forgets e.g. `narrative_review`.
         data = _fill_missing_top_level_fields(data, schema)
+        # Re-sanitize after fill — the fill may have introduced type
+        # mismatches (e.g. caps: {} → []) that need parallel-array work.
+        data = _sanitize_judge_for_validation(data, schema=schema)
         try:
             _validate_schema(data, schema)
         except SchemaValidationError:
@@ -302,7 +305,7 @@ _PARALLEL_ARRAY_FIELDS = ("root_causes", "caps", "skipped_dimensions",
                          "matched_golden_cases")
 
 
-def _sanitize_judge_for_validation(data: Any) -> Any:
+def _sanitize_judge_for_validation(data: Any, schema: dict | None = None) -> Any:
     """Coerce common LLM shape mistakes back into schema form. Idempotent.
 
     Handles:
@@ -314,12 +317,39 @@ def _sanitize_judge_for_validation(data: Any) -> Any:
     3. `dimension_scores.raw_score` and `root_causes[].raw_score` given as
        strings ("80") — coerced to float. (Same for `score_ceiling` on
        cap entries.)
-    4. `weight_assignment` wrapped as `{"item": [...]}` (handled in
+    4. Top-level field whose schema type is `object` but data has a list
+       (or vice versa) — coerced to the safe default {} or [] so
+       downstream code that calls `.get()` on these fields never crashes
+       with 'list' object has no attribute 'get'.
+    5. `weight_assignment` wrapped as `{"item": [...]}` (handled in
        evaluator._sanitize_judge_output too; here we do a lighter pass so
        it survives schema validation in the call site).
     """
     if not isinstance(data, dict):
         return data
+
+    # 4) Coerce top-level field TYPES against the schema. Without this,
+    #    a judge that returns e.g. `weight_assignment: [{...}, {...}]`
+    #    (list) when the schema expects an object would slip through the
+    #    permissive fallback and crash the scorer with AttributeError.
+    type_defaults: dict[str, Any] = {"object": {}, "array": []}
+    if isinstance(schema, dict):
+        props = schema.get("properties") or {}
+        for fname, fschema in props.items():
+            expected = (fschema or {}).get("type")
+            if expected not in type_defaults:
+                continue
+            v = data.get(fname)
+            if v is None:
+                continue
+            actual = (
+                "array" if isinstance(v, list)
+                else "object" if isinstance(v, dict)
+                else None
+            )
+            if actual is None or actual == expected:
+                continue
+            data[fname] = type_defaults[expected]
 
     for field in _PARALLEL_ARRAY_FIELDS:
         v = data.get(field)

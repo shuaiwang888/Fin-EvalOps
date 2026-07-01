@@ -249,23 +249,46 @@ def evaluate_run(run_id: str) -> None:
             _emit(channel, "step", {"step": 3, "label": "应用封顶规则"})
             _update(db, run, channel, status="scoring", progress=85, current_step="step3")
 
-            sc = scorer.compute_scores(
-                run.weight_assignment, run.dimension_scores, run.caps,
-            )
-            run.absolute_score_pre_cap = sc.absolute_score_pre_cap
-            run.final_score = sc.final_score
+            scorer_failed = False
+            triggered_caps: list = []
+            warnings: list = []
+            try:
+                sc = scorer.compute_scores(
+                    run.weight_assignment, run.dimension_scores, run.caps,
+                )
+                run.absolute_score_pre_cap = sc.absolute_score_pre_cap
+                run.final_score = sc.final_score
+                triggered_caps = [c.get("rule_id") for c in sc.triggered_caps if isinstance(c, dict)]
+                warnings = sc.warnings
+            except Exception as exc:
+                # Scorer raised on a malformed judge output (e.g. list-where-dict
+                # despite all the sanitization above). Don't kill the whole run —
+                # record the raw response and an error_msg so the user can still
+                # inspect what came back, but mark status='failed' for clarity.
+                log.exception("Scorer crashed on run %s: %s", run.id, exc)
+                run.status = "failed"
+                run.error_msg = f"判分计算异常:{exc}"
+                run.finished_at = datetime.now(timezone.utc)
+                run.absolute_score_pre_cap = None
+                run.final_score = None
+                _emit(channel, "error", {
+                    "run_id": run.id,
+                    "message": run.error_msg,
+                })
+                scorer_failed = True
 
-            _emit(channel, "step", {"step": 4, "label": "序列化输出"})
-            _update(db, run, channel, status="done", progress=100,
-                    current_step="done", finished_at=datetime.now(timezone.utc))
+            if not scorer_failed:
+                _emit(channel, "step", {"step": 4, "label": "序列化输出"})
+                _update(db, run, channel, status="done", progress=100,
+                        current_step="done", finished_at=datetime.now(timezone.utc))
 
-            _emit(channel, "complete", {
-                "run_id": run.id,
-                "final_score": sc.final_score,
-                "absolute_score_pre_cap": sc.absolute_score_pre_cap,
-                "warnings": sc.warnings,
-                "triggered_caps": [c.get("rule_id") for c in sc.triggered_caps],
-            })
+                _emit(channel, "complete", {
+                    "run_id": run.id,
+                    "final_score": sc.final_score,
+                    "absolute_score_pre_cap": sc.absolute_score_pre_cap,
+                    "warnings": warnings,
+                    "triggered_caps": triggered_caps,
+                })
     except Exception as exc:  # safety net
         log.exception("Evaluator crashed: %s", exc)
         try:
