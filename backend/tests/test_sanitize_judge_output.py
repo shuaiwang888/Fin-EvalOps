@@ -73,3 +73,184 @@ def test_skips_item_entries_with_no_dimension_key():
     # Only dim_b should make it through
     assert "dim_b" in fixed["weight_assignment"]
     assert len(fixed["weight_assignment"]) == 1
+
+
+# ===========================================================================
+# Parallel-array sanitizer (root_causes / caps / skipped_dimensions)
+# Reproduces the exact shape from the user's failing-eval bug report.
+# ===========================================================================
+
+def test_unwraps_root_causes_parallel_arrays():
+    """LLM gave root_causes as a dict of parallel arrays — must transpose."""
+    raw = {
+        "confidence": ["medium", "medium"],
+        "dimension": ["user_profile_suitability", "comparison_quantification"],
+        "l1": ["user_profile", "evidence"],
+        "l2": ["profile-not-acknowledged", "missing-fine-grained-segmentation"],
+        "raw_score": ["40", "60"],
+        "summary": ["未明确说明用户画像缺失", "未能从财报拆出细分字段"],
+    }
+    fixed = _sanitize_judge_output({"root_causes": raw, "caps": []}, "test")
+    rc = fixed["root_causes"]
+    assert isinstance(rc, list), f"root_causes not transposed: got {type(rc)}"
+    assert len(rc) == 2
+    assert rc[0]["l1"] == "user_profile"
+    assert rc[0]["raw_score"] == "40"
+    assert rc[1]["l1"] == "evidence"
+
+
+def test_unwraps_caps_parallel_arrays():
+    raw = {
+        "rule_id": ["cap_a", "cap_b"],
+        "triggered": [True, False],
+        "score_ceiling": [50, 70],
+    }
+    fixed = _sanitize_judge_output({"root_causes": [], "caps": raw}, "test")
+    assert fixed["caps"] == [
+        {"rule_id": "cap_a", "triggered": True, "score_ceiling": 50},
+        {"rule_id": "cap_b", "triggered": False, "score_ceiling": 70},
+    ]
+
+
+def test_unwraps_skipped_dimensions_parallel_arrays():
+    raw = {
+        "dimension": ["d1", "d2"],
+        "reason": ["r1", "r2"],
+    }
+    fixed = _sanitize_judge_output({"root_causes": [], "caps": [], "skipped_dimensions": raw}, "test")
+    assert fixed["skipped_dimensions"] == [
+        {"dimension": "d1", "reason": "r1"},
+        {"dimension": "d2", "reason": "r2"},
+    ]
+
+
+def test_keeps_already_correct_list_shape():
+    """Idempotency: list-of-objects input is left untouched."""
+    rc = [{"l1": "x", "l2": "y"}, {"l1": "a", "l2": "b"}]
+    fixed = _sanitize_judge_output({"root_causes": rc, "caps": []}, "test")
+    assert fixed["root_causes"] == rc
+
+
+def test_empty_dict_becomes_empty_list():
+    """Empty {} in a parallel-array slot becomes [] rather than crashing."""
+    fixed = _sanitize_judge_output({"root_causes": {}, "caps": {}}, "test")
+    assert fixed["root_causes"] == []
+    assert fixed["caps"] == []
+
+
+# ===========================================================================
+# llm_client._sanitize_judge_for_validation — runs BEFORE schema validation
+# so these cases must be fixed before the validator sees them.
+# ===========================================================================
+
+def test_llm_client_sanitizer_root_causes_parallel_arrays():
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    raw = {
+        "schema_version": "v1",
+        "weight_assignment": {},
+        "dimension_scores": {},
+        "caps": [],
+        "root_causes": {
+            "l1": ["a", "b"],
+            "l2": ["x", "y"],
+            "raw_score": ["40", "60"],
+        },
+        "narrative_review": {},
+    }
+    out = _sanitize_judge_for_validation(raw)
+    assert isinstance(out["root_causes"], list)
+    # raw_score strings are coerced to float (matches schema `type: number`)
+    assert out["root_causes"] == [
+        {"l1": "a", "l2": "x", "raw_score": 40.0},
+        {"l1": "b", "l2": "y", "raw_score": 60.0},
+    ]
+
+
+def test_llm_client_sanitizer_matched_golden_cases_string():
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    raw = {
+        "matched_golden_cases": "Case 1: 算力涨价; Case 2: 先进封测",
+    }
+    out = _sanitize_judge_for_validation(raw)
+    assert isinstance(out["matched_golden_cases"], list)
+    assert "算力涨价" in out["matched_golden_cases"]
+    assert "先进封测" in out["matched_golden_cases"]
+
+
+def test_llm_client_sanitizer_dimension_scores_raw_score_strings():
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    raw = {"dimension_scores": {"a": {"raw_score": "80"}, "b": {"raw_score": "70.5"}}}
+    out = _sanitize_judge_for_validation(raw)
+    assert out["dimension_scores"]["a"]["raw_score"] == 80.0
+    assert out["dimension_scores"]["b"]["raw_score"] == 70.5
+
+
+def test_llm_client_sanitizer_is_idempotent():
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    good = {
+        "schema_version": "v1",
+        "weight_assignment": {"a": {"dynamic_weight": 10, "applicability": "relevant"}},
+        "dimension_scores": {"a": {"raw_score": 80.0}},
+        "caps": [{"rule_id": "r", "triggered": False}],
+        "root_causes": [{"l1": "issue"}],
+        "narrative_review": {"summary": "ok"},
+        "matched_golden_cases": ["Case 1"],
+    }
+    out = _sanitize_judge_for_validation(dict(good))
+    assert out == good
+
+
+# ===========================================================================
+# End-to-end: the exact failing payload from the bug report should now
+# pass strict schema validation after sanitization.
+# ===========================================================================
+
+def test_full_schema_validation_passes_after_sanitization():
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+    from app.services.llm_client import _sanitize_judge_for_validation, _validate_schema
+
+    raw = {
+        "schema_version": "interactive-clarification/v1",
+        "weight_assignment": {"intent_fulfillment": {
+            "dynamic_weight": 30, "applicability": "relevant", "rationale": "...",
+        }},
+        "dimension_scores": {"intent_fulfillment": {"raw_score": 80}},
+        "caps": [],
+        "root_causes": {
+            "confidence": ["medium", "medium"],
+            "dimension": ["a", "b"],
+            "l1": ["user_profile", "evidence"],
+            "l2": ["p1", "e1"],
+            "raw_score": ["40", "60"],
+            "summary": ["s1", "s2"],
+        },
+        "narrative_review": {"summary": "x"},
+    }
+    out = _sanitize_judge_for_validation(raw)
+    # MUST NOT raise
+    _validate_schema(out, EVAL_OUTPUT_SCHEMA)
+
+
+def test_permissive_fill_fills_missing_required_fields():
+    """If sanitization can't fix the schema, the permissive fallback must
+    fill missing required top-level fields so the validator passes."""
+    from app.services.llm_client import (
+        _fill_missing_top_level_fields, _validate_schema,
+    )
+    from app.services.evaluator import EVAL_OUTPUT_SCHEMA
+
+    partial = {
+        "schema_version": "v1",
+        "weight_assignment": {},
+        "dimension_scores": {},
+        "caps": [],
+        # narrative_review + root_causes missing — both required
+    }
+    filled = _fill_missing_top_level_fields(partial, EVAL_OUTPUT_SCHEMA)
+    assert "narrative_review" in filled
+    assert "root_causes" in filled
+    _validate_schema(filled, EVAL_OUTPUT_SCHEMA)

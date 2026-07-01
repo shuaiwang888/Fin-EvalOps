@@ -370,6 +370,39 @@ def _sanitize_judge_output(data: dict, channel: str) -> dict:
         data["dimension_scores"] = {}
         _emit(channel, "step", {"step": 1.5, "label": "dimension_scores 缺失,已默认空(分数会归 0)"})
 
+    # 3) root_causes / caps / matched_golden_cases sometimes arrive as a
+    #    dict of parallel arrays (judge models that don't read the schema
+    #    carefully). Transpose them into the list-of-objects shape the
+    #    rest of the pipeline expects. Defensive duplicate of the same
+    #    sanitization in llm_client._sanitize_judge_for_validation — both
+    #    layers help because cached / legacy payloads may skip the client.
+    for field in ("root_causes", "caps", "skipped_dimensions"):
+        v = data.get(field)
+        if isinstance(v, dict):
+            # Is it a "dict of parallel arrays" → transpose
+            list_lengths = [
+                len(x) for x in v.values()
+                if isinstance(x, list) and x
+            ]
+            if len(list_lengths) >= 2 and len(set(list_lengths)) == 1:
+                keys = list(v.keys())
+                n = list_lengths[0]
+                reshaped = []
+                for i in range(n):
+                    item = {}
+                    for k in keys:
+                        val = v[k]
+                        if isinstance(val, list) and i < len(val):
+                            item[k] = val[i]
+                        else:
+                            item[k] = val
+                    reshaped.append(item)
+                data[field] = reshaped
+                _emit(channel, "step",
+                      {"step": 1.5, "label": f"{field} 已从 {n} 条平行数组 unwrap"})
+            elif not v:
+                data[field] = []
+
     return data
 
 
