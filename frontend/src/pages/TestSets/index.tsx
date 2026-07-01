@@ -24,12 +24,14 @@ import {
   AppstoreOutlined,
   DeleteOutlined,
   TagsOutlined,
+  PlayCircleOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate } from "react-router-dom";
 import useSWR from "swr";
 import dayjs from "dayjs";
 
 import { testsetsApi } from "../../api/testsets";
+import { runsApi } from "../../api/runs";
 import type { TestCaseBrief, TestCategory } from "../../api/types";
 
 const { Search } = Input;
@@ -87,6 +89,41 @@ export default function TestSets() {
     setImportCat(undefined);
     setPendingFile(null);
     setImporting(false);
+  };
+
+  // -------- Batch evaluation --------
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [showBatchEval, setShowBatchEval] = useState(false);
+  const [batchJudgeModel, setBatchJudgeModel] = useState<string | undefined>();
+  const [batchLabel, setBatchLabel] = useState("");
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const { data: models } = useSWR("/api/models", () =>
+    fetch("/api/models").then((r) => r.json()).then((d) => d.models)
+  );
+
+  const submitBatchEval = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchSubmitting(true);
+    try {
+      const r = await runsApi.createBatch({
+        testcase_ids: selectedRowKeys.map(String),
+        skill_strategy: "auto",
+        judge_model: batchJudgeModel,
+        label: batchLabel || `批量评测 ${selectedRowKeys.length} 条`,
+      });
+      message.success(
+        `已创建批量评测 (batch=${r.id.slice(0, 8)}, ${selectedRowKeys.length} 条),3 路并发执行中`
+      );
+      setShowBatchEval(false);
+      setSelectedRowKeys([]);
+      setBatchJudgeModel(undefined);
+      setBatchLabel("");
+      navigate(`/runs?batch_id=${r.id}`);
+    } catch {
+      /* interceptor shows error */
+    } finally {
+      setBatchSubmitting(false);
+    }
   };
 
   // Category management modal — can be opened in "manage" mode (list + delete)
@@ -192,6 +229,14 @@ export default function TestSets() {
             </Tooltip>
             <Button icon={<CloudDownloadOutlined />} onClick={() => setShowIwencai(true)}>问财拉取</Button>
             <Button icon={<UploadOutlined />} onClick={() => setShowImport(true)}>导入 JSON</Button>
+            <Button
+              type={selectedRowKeys.length > 0 ? "primary" : "default"}
+              icon={<PlayCircleOutlined />}
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => setShowBatchEval(true)}
+            >
+              批量评测{selectedRowKeys.length > 0 ? ` (${selectedRowKeys.length})` : ""}
+            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>新增</Button>
             <Button icon={<ReloadOutlined />} onClick={() => mutate()} />
           </Space>
@@ -235,6 +280,11 @@ export default function TestSets() {
           dataSource={data?.items || []}
           rowKey="id"
           size="small"
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+            preserveSelectedRowKeys: true,
+          }}
           pagination={{
             current: filters.page,
             pageSize: filters.page_size,
@@ -495,6 +545,45 @@ export default function TestSets() {
             }}
           />
         )}
+      </Modal>
+
+      {/* Batch evaluation modal — submits to /api/runs/batch which runs
+          up to 3 evals concurrently. After submission, navigates to
+          /runs?batch_id=... so the user can watch progress live. */}
+      <Modal
+        title={`批量评测 (${selectedRowKeys.length} 条)`}
+        open={showBatchEval}
+        onCancel={() => !batchSubmitting && setShowBatchEval(false)}
+        okText="开始评测"
+        cancelText="取消"
+        confirmLoading={batchSubmitting}
+        onOk={submitBatchEval}
+      >
+        <Form layout="vertical">
+          <Form.Item label="判分模型" required>
+            <Select
+              placeholder="默认使用 DEFAULT_JUDGE_MODEL"
+              allowClear
+              value={batchJudgeModel}
+              onChange={setBatchJudgeModel}
+              options={(models || []).map((m: any) => ({
+                value: m.id,
+                label: `${m.label} (${m.id})`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item label="批次备注(可选)">
+            <Input
+              placeholder={`默认: 批量评测 ${selectedRowKeys.length} 条`}
+              value={batchLabel}
+              onChange={(e) => setBatchLabel(e.target.value)}
+            />
+          </Form.Item>
+          <div style={{ fontSize: 12, color: "#999", marginTop: -8 }}>
+            评测将自动路由到最匹配的 Skill,3 路并发执行。
+            创建后可到 <code>Runs</code> 页查看实时进度。
+          </div>
+        </Form>
       </Modal>
     </div>
   );

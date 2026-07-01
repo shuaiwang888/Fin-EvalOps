@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -192,7 +193,11 @@ def list_runs(
     page_size: int = Query(20, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Run)
+    # outerjoin TestCase so Runs whose testcase was deleted still appear
+    # (question will simply be None — rare but happens after bulk delete).
+    q = db.query(Run, TestCase.question.label("testcase_question")).outerjoin(
+        TestCase, Run.testcase_id == TestCase.id
+    )
     if status:
         q = q.filter(Run.status == status)
     if skill_id:
@@ -207,7 +212,6 @@ def list_runs(
         raise HTTPException(400, f"sort must be one of: {sorted(_SORT_COLUMNS)}")
     sort_col = _SORT_COLUMNS[sort]
     sort_col = sort_col.desc() if order == "desc" else sort_col.asc()
-    # Always tie-break by created_at desc so paginated results are stable.
     q = q.order_by(sort_col, Run.created_at.desc())
     total = q.with_entities(func.count(Run.id)).scalar() or 0
     rows = (
@@ -215,9 +219,14 @@ def list_runs(
         .limit(page_size)
         .all()
     )
+    items = []
+    for run_row, question in rows:
+        item = RunBrief.model_validate(run_row).model_dump()
+        item["testcase_question"] = question
+        items.append(item)
     return {
         "total": total, "page": page, "page_size": page_size,
-        "items": [RunBrief.model_validate(r).model_dump() for r in rows],
+        "items": items,
     }
 
 
@@ -226,7 +235,66 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
     row = db.get(Run, run_id)
     if not row:
         raise HTTPException(404)
-    return row
+    # Attach question to the response
+    tc = db.get(TestCase, row.testcase_id) if row.testcase_id else None
+    out = RunDetail.model_validate(row).model_dump()
+    out["testcase_question"] = tc.question if tc else None
+    return out
+
+
+# ----------------------------------------------------------------------------
+# Delete
+# ----------------------------------------------------------------------------
+class RunDeleteRequest(BaseModel):
+    run_ids: List[str] = Field(min_length=1, max_length=500)
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str, db: Session = Depends(get_db)):
+    """Hard-delete one Run and its annotations.
+
+    Refuses to delete a Run that's currently running — the user should
+    wait for it to finish or fail before deleting. Annotations cascade
+    via the FK relationship in models.py.
+    """
+    row = db.get(Run, run_id)
+    if not row:
+        raise HTTPException(404, f"Run {run_id} not found")
+    if row.status in {"pending", "routing", "running", "scoring"}:
+        raise HTTPException(
+            409,
+            f"Run {run_id} 状态为 {row.status},请等待评测完成后再删除",
+        )
+    db.delete(row)
+    db.commit()
+    hf_persistence.mark_dirty()
+    return {"deleted": run_id}
+
+
+@router.post("/runs/delete-batch")
+def delete_runs_batch(body: RunDeleteRequest, db: Session = Depends(get_db)):
+    """Bulk-delete Runs (used by the Runs page row-selection + '删除' button)."""
+    deleted: list[str] = []
+    skipped_busy: list[str] = []
+    skipped_missing: list[str] = []
+    for rid in body.run_ids:
+        row = db.get(Run, rid)
+        if not row:
+            skipped_missing.append(rid)
+            continue
+        if row.status in {"pending", "routing", "running", "scoring"}:
+            skipped_busy.append(rid)
+            continue
+        db.delete(row)
+        deleted.append(rid)
+    db.commit()
+    if deleted:
+        hf_persistence.mark_dirty()
+    return {
+        "deleted": deleted,
+        "skipped_busy": skipped_busy,
+        "skipped_missing": skipped_missing,
+    }
 
 
 @router.post("/runs/{run_id}/rerun", response_model=RunBrief, status_code=201)

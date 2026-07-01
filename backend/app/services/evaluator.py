@@ -17,7 +17,14 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from .. import config as app_config
 from ..db import db_session
+
+# Capture at module load; we read the env-tunable concurrency from here so
+# tests can monkey-patch it. The default of 3 is conservative — most LLM
+# providers rate-limit per API key, and 3 concurrent eval calls is a
+# sweet spot for minimax / anthropic free tiers without hitting 429s.
+settings = app_config.settings
 from ..models import Run, Skill, TestCase
 from ..utils.prompts import EVALUATOR_SYSTEM
 from ..utils.trace import get_logger, set_trace_id
@@ -438,19 +445,49 @@ def _sanitize_judge_output(data: dict, channel: str) -> dict:
 
 
 def evaluate_batch(batch_id: str, run_ids: list[str]) -> None:
-    """Run many evaluations sequentially (provider rate limits forbid full
-    parallelism for the free MVP). Emits batch-level progress."""
+    """Run many evaluations concurrently (3 workers by default).
+
+    Concurrency is bounded because LLM providers rate-limit per key. Set
+    `EVAL_BATCH_CONCURRENCY` env var to tune. Each worker calls
+    `evaluate_run()` which manages its own DB session, so SQLAlchemy
+    session-sharing races don't apply.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     set_trace_id(f"batch-{batch_id[:6]}")
     channel = f"batches/{batch_id}"
-    log.info("Batch %s: %d runs", batch_id, len(run_ids))
-    for idx, rid in enumerate(run_ids):
-        try:
-            evaluate_run(rid)
-        except Exception as exc:
-            log.exception("Batch %s: run %s failed: %s", batch_id, rid, exc)
-        _emit(channel, "progress", {
-            "index": idx + 1, "total": len(run_ids), "run_id": rid,
-        })
+    log.info("Batch %s: %d runs (concurrency=%d)",
+             batch_id, len(run_ids), settings.eval_batch_concurrency)
+    max_workers = max(1, min(settings.eval_batch_concurrency, len(run_ids) or 1))
+
+    completed = 0
+    if max_workers == 1:
+        # Single-run batch — no point spinning a thread.
+        for rid in run_ids:
+            try:
+                evaluate_run(rid)
+            except Exception as exc:
+                log.exception("Batch %s: run %s failed: %s", batch_id, rid, exc)
+            completed += 1
+            _emit(channel, "progress", {
+                "index": completed, "total": len(run_ids), "run_id": rid,
+            })
+    else:
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            future_to_rid = {
+                pool.submit(evaluate_run, rid): rid for rid in run_ids
+            }
+            for fut in as_completed(future_to_rid):
+                rid = future_to_rid[fut]
+                try:
+                    fut.result()  # propagate inner exception via log
+                except Exception as exc:
+                    log.exception("Batch %s: run %s failed: %s",
+                                  batch_id, rid, exc)
+                completed += 1
+                _emit(channel, "progress", {
+                    "index": completed, "total": len(run_ids), "run_id": rid,
+                })
     broker.close(channel)
 
     # ---- Persist to HF Datasets at the natural unit of work ----

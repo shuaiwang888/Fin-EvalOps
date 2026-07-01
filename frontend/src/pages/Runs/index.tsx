@@ -14,12 +14,14 @@ import {
   Progress,
   Alert,
   Radio,
+  Popconfirm,
 } from "antd";
 import {
   PlusOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
   PlayCircleOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
@@ -61,6 +63,43 @@ export default function Runs() {
 
   const { data: skills } = useSWR("/api/skills?family=self", () => skillsApi.list("self"));
 
+  // -------- Row selection + bulk delete --------
+  const [selectedRunKeys, setSelectedRunKeys] = useState<React.Key[]>([]);
+  // Reset selection when the underlying data refreshes (otherwise stale ids
+  // for deleted runs linger).
+  useEffect(() => {
+    const liveIds = new Set((data?.items || []).map((r) => r.id));
+    setSelectedRunKeys((keys) => keys.filter((k) => liveIds.has(String(k))));
+  }, [data]);
+
+  const handleDeleteSelected = async () => {
+    if (selectedRunKeys.length === 0) return;
+    try {
+      const r = await runsApi.deleteRuns(selectedRunKeys.map(String));
+      const parts: string[] = [`已删除 ${r.deleted.length} 条`];
+      if (r.skipped_busy.length > 0) parts.push(`${r.skipped_busy.length} 条正在评测中,跳过`);
+      if (r.skipped_missing.length > 0) parts.push(`${r.skipped_missing.length} 条不存在`);
+      message.success(parts.join(";"));
+      setSelectedRunKeys([]);
+      mutate();
+    } catch {
+      /* interceptor shows error */
+    }
+  };
+
+  const handleDeleteOne = async (id: string) => {
+    try {
+      await runsApi.deleteRun(id);
+      message.success(`已删除 Run ${id.slice(0, 8)}`);
+      setSelectedRunKeys((keys) => keys.filter((k) => String(k) !== id));
+      mutate();
+    } catch (e: any) {
+      // 409 case: in-flight run — show the reason
+      const msg = e?.response?.data?.detail || "删除失败";
+      message.error(msg);
+    }
+  };
+
   const [showCreate, setShowCreate] = useState(!!presetTcId || !!presetSkillHint);
   useEffect(() => {
     if (presetTcId || presetSkillHint) setShowCreate(true);
@@ -76,6 +115,23 @@ export default function Runs() {
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>
               新建评测
             </Button>
+            <Popconfirm
+              title={`删除选中的 ${selectedRunKeys.length} 条 Run?`}
+              description="正在评测中的 Run 会自动跳过;删除后无法恢复"
+              okText="删除"
+              okButtonProps={{ danger: true, disabled: selectedRunKeys.length === 0 }}
+              cancelText="取消"
+              onConfirm={handleDeleteSelected}
+              disabled={selectedRunKeys.length === 0}
+            >
+              <Button
+                danger
+                disabled={selectedRunKeys.length === 0}
+                icon={<DeleteOutlined />}
+              >
+                删除选中{selectedRunKeys.length > 0 ? ` (${selectedRunKeys.length})` : ""}
+              </Button>
+            </Popconfirm>
           </Space>
         }
       >
@@ -125,6 +181,15 @@ export default function Runs() {
           dataSource={data?.items || []}
           rowKey="id"
           size="small"
+          rowSelection={{
+            selectedRowKeys: selectedRunKeys,
+            onChange: (keys) => setSelectedRunKeys(keys),
+            getCheckboxProps: (r) => ({
+              disabled: r.status === "pending" || r.status === "routing" ||
+                         r.status === "running" || r.status === "scoring",
+            }),
+            preserveSelectedRowKeys: true,
+          }}
           pagination={{
             current: filters.page,
             pageSize: filters.page_size,
@@ -158,6 +223,17 @@ export default function Runs() {
               width: 110,
               render: (v: string) => (
                 <Link to={`/runs/${v}`}><code style={{ fontSize: 11 }}>{v.slice(0, 8)}</code></Link>
+              ),
+            },
+            {
+              title: "问题",
+              dataIndex: "testcase_question",
+              key: "testcase_question",
+              ellipsis: true,
+              render: (v: string | null | undefined, r) => (
+                <Tooltip title={v || ""}>
+                  <Link to={`/runs/${r.id}`}>{v ? v.slice(0, 80) : "(样本已删除)"}</Link>
+                </Tooltip>
               ),
             },
             {
@@ -212,19 +288,40 @@ export default function Runs() {
             {
               title: "操作",
               key: "actions",
-              width: 100,
-              render: (_, r) => (
-                <Space size={4}>
-                  <Button size="small" type="link" onClick={() => navigate(`/runs/${r.id}`)}>详情</Button>
-                  {r.status === "failed" && (
-                    <Button size="small" type="link" onClick={async () => {
-                      await runsApi.rerun(r.id);
-                      message.success("已重试");
-                      mutate();
-                    }}>重试</Button>
-                  )}
-                </Space>
-              ),
+              width: 160,
+              render: (_, r) => {
+                const inFlight = ["pending", "routing", "running", "scoring"].includes(r.status);
+                return (
+                  <Space size={4}>
+                    <Button size="small" type="link" onClick={() => navigate(`/runs/${r.id}`)}>详情</Button>
+                    {r.status === "failed" && (
+                      <Button size="small" type="link" onClick={async () => {
+                        await runsApi.rerun(r.id);
+                        message.success("已重试");
+                        mutate();
+                      }}>重试</Button>
+                    )}
+                    <Popconfirm
+                      title="删除该 Run?"
+                      description={inFlight ? "该 Run 正在评测中,无法删除" : "删除后无法恢复"}
+                      okText="删除"
+                      okButtonProps={{ danger: true, disabled: inFlight }}
+                      cancelText="取消"
+                      onConfirm={() => handleDeleteOne(r.id)}
+                    >
+                      <Button
+                        size="small"
+                        type="link"
+                        danger
+                        disabled={inFlight}
+                        icon={<DeleteOutlined />}
+                      >
+                        删除
+                      </Button>
+                    </Popconfirm>
+                  </Space>
+                );
+              },
             },
           ]}
         />

@@ -76,6 +76,9 @@ export interface RunBrief {
   id: string;
   batch_id?: string | null;
   testcase_id: string;
+  /** Joined from TestCase.question by the runs router — surfaced on the
+   * Runs page so users can read the question without a second round-trip. */
+  testcase_question?: string | null;
   skill_id: string;
   judge_model: string;
   judge_provider: string;

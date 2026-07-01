@@ -66,7 +66,7 @@ class Settings(BaseSettings):
 
     # ----- Paths (not env-driven in practice) -----
     skills_root: str = "../skills"
-    testsets_root: str = "../数据测试集"
+    testsets_root: str = "../自研评测测试集"
     db_path: str = "./data/fin_evalops.db"
 
     # ----- Web -----
@@ -81,6 +81,10 @@ class Settings(BaseSettings):
 
     # ----- Misc -----
     log_level: str = "INFO"
+
+    # Max concurrent eval jobs inside a single batch (ThreadPoolExecutor in
+    # services/evaluator.py). 3 is conservative for free-tier LLM keys.
+    eval_batch_concurrency: int = 3
 
     @field_validator("skills_root", "testsets_root", "db_path", mode="before")
     @classmethod

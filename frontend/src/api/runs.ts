@@ -66,4 +66,15 @@ export const runsApi = {
   }) => http.post<RunBatchOut>("/api/runs/batch", body).then((r) => r.data),
   listBatches: () =>
     http.get<RunBatchOut[]>("/api/runs/batches", { silent: true }).then((r) => r.data),
+  /** Hard-delete a single Run (refuses if status is in-flight). */
+  deleteRun: (id: string) =>
+    http.delete<{ deleted: string }>(`/api/runs/${id}`).then((r) => r.data),
+  /** Bulk-delete Runs. Returns {deleted, skipped_busy, skipped_missing}. */
+  deleteRuns: (run_ids: string[]) =>
+    http
+      .post<{ deleted: string[]; skipped_busy: string[]; skipped_missing: string[] }>(
+        "/api/runs/delete-batch",
+        { run_ids }
+      )
+      .then((r) => r.data),
 };

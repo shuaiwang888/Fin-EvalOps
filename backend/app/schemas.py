@@ -189,6 +189,10 @@ class RunBrief(_OrmBase):
     id: str
     batch_id: Optional[str] = None
     testcase_id: str
+    # Joined from TestCase.question in the router — populated by the
+    # response builder so the Runs page can show the question text without
+    # a second round-trip per row.
+    testcase_question: Optional[str] = None
     skill_id: str
     judge_model: str
     judge_provider: str
