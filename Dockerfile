@@ -6,7 +6,7 @@
 #   /app/
 #     backend/             # FastAPI app
 #     skills/              # 13 self-eval + 14 competitor + 14 e2e skill protocols
-#     数据测试集/           # 65 test samples across 13 categories
+#     自研评测测试集/        # 13 categories, 3627 test cases (one JSON file per category)
 #   /.cache/huggingface/   # HF Hub cache (datasets, models)
 #   /data/                 # SQLite DB (ephemeral — synced to HF Dataset)
 # =============================================================================
@@ -44,7 +44,9 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 # ---- App source ----
 COPY backend/ /app/backend/
 COPY skills/  /app/skills/
-COPY 数据测试集/  /app/数据测试集/
+# NOTE: 数据测试集/ is NOT bundled in the image. Tests are uploaded at
+# runtime via the web UI's "导入 JSON" button (POST /api/testsets/import-file).
+# scan-disk is a graceful no-op when testsets_root does not exist.
 
 # HF Spaces persistent storage opt-in (free tier: 20GB on CPU).
 # This is where the SQLite DB lives between deploys. The app still pushes
