@@ -178,6 +178,10 @@ export interface AgentMessage {
   created_at: string;
 }
 
+export type AgentAnalysisContext =
+  | { scope: "category"; category_code: string }
+  | { scope: "testcase"; testcase_id: string };
+
 export interface AgentSessionDetail extends AgentSessionBrief {
   messages: AgentMessage[];
 }

@@ -64,7 +64,15 @@ def delete_session(sid: str, db: Session = Depends(get_db)):
 def send_message(sid: str, body: AgentMessageIn, db: Session = Depends(get_db)):
     if not db.get(AgentSession, sid):
         raise HTTPException(404, "session not found")
-    payload = data_agent.reply(sid, body.content, model_id=body.model)
+    try:
+        payload = data_agent.reply(
+            sid,
+            body.content,
+            model_id=body.model,
+            analysis_context=body.context.model_dump() if body.context else None,
+        )
+    except data_agent.AnalysisContextError as exc:
+        raise HTTPException(404, str(exc)) from exc
     # data_agent.reply persists AgentMessage rows internally; mark dirty
     hf_persistence.mark_dirty()
     return payload

@@ -1,5 +1,10 @@
 import { http } from "./client";
-import type { AgentMessage, AgentSessionBrief, AgentSessionDetail } from "./types";
+import type {
+  AgentAnalysisContext,
+  AgentMessage,
+  AgentSessionBrief,
+  AgentSessionDetail,
+} from "./types";
 
 export const agentApi = {
   listSessions: () =>
@@ -14,7 +19,12 @@ export const agentApi = {
     http.get<AgentSessionDetail>(`/api/agent/sessions/${id}`).then((r) => r.data),
   deleteSession: (id: string) =>
     http.delete(`/api/agent/sessions/${id}`).then((r) => r.data),
-  sendMessage: (id: string, content: string, model?: string) =>
+  sendMessage: (
+    id: string,
+    content: string,
+    model?: string,
+    context?: AgentAnalysisContext,
+  ) =>
     http
       .post<{
         answer: string;
@@ -22,8 +32,9 @@ export const agentApi = {
         chart_spec?: any;
         data_preview?: any[];
         sql_error?: string;
+        analysis_error?: string;
         row_count?: number;
-      }>(`/api/agent/sessions/${id}/messages`, { content, model })
+      }>(`/api/agent/sessions/${id}/messages`, { content, model, context })
       .then((r) => r.data),
   listMessages: (id: string) =>
     http.get<AgentMessage[]>(`/api/agent/sessions/${id}/messages`).then((r) => r.data),

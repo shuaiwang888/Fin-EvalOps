@@ -6,7 +6,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.evaluator import _sanitize_judge_output
+from app.services.evaluator import (
+    EVAL_OUTPUT_SCHEMA,
+    _sanitize_judge_output,
+    _scoring_payload_issue,
+)
 
 
 def test_unwraps_weight_assignment_item_array():
@@ -43,6 +47,54 @@ def test_defaults_missing_dimension_scores():
     data = {"caps": [], "root_causes": [], "narrative_review": {}, "weight_assignment": {}}
     fixed = _sanitize_judge_output(data, "test")
     assert fixed["dimension_scores"] == {}
+
+
+def test_empty_scoring_structures_are_invalid_not_zero():
+    issue = _scoring_payload_issue({
+        "weight_assignment": {},
+        "dimension_scores": {},
+    })
+    assert issue == "weight_assignment 为空"
+
+
+def test_explicit_all_zero_scores_remain_valid():
+    issue = _scoring_payload_issue({
+        "weight_assignment": {
+            "accuracy": {"dynamic_weight": 100, "applicability": "relevant"},
+        },
+        "dimension_scores": {"accuracy": {"raw_score": 0}},
+    })
+    assert issue is None
+
+
+def test_partial_dimension_scores_are_invalid():
+    issue = _scoring_payload_issue({
+        "weight_assignment": {
+            "accuracy": {"dynamic_weight": 60, "applicability": "relevant"},
+            "evidence": {"dynamic_weight": 40, "applicability": "relevant"},
+        },
+        "dimension_scores": {"accuracy": {"raw_score": 80}},
+    })
+    assert issue == "正权重维度缺少评分:evidence"
+
+
+def test_eval_schema_rejects_empty_scoring_objects():
+    from app.services.llm_client import SchemaValidationError, _validate_schema
+
+    payload = {
+        "schema_version": "v1",
+        "weight_assignment": {},
+        "dimension_scores": {},
+        "caps": [],
+        "root_causes": [],
+        "narrative_review": {},
+    }
+    try:
+        _validate_schema(payload, EVAL_OUTPUT_SCHEMA)
+    except SchemaValidationError:
+        pass
+    else:  # pragma: no cover - documents the regression contract
+        raise AssertionError("empty scoring objects must fail schema validation")
 
 
 def test_keeps_existing_dimension_scores():
@@ -327,11 +379,10 @@ def test_full_schema_validation_passes_after_sanitization():
     _validate_schema(out, EVAL_OUTPUT_SCHEMA)
 
 
-def test_permissive_fill_fills_missing_required_fields():
-    """If sanitization can't fix the schema, the permissive fallback must
-    fill missing required top-level fields so the validator passes."""
+def test_fill_adds_optional_sections_but_does_not_hide_empty_scores():
+    """Top-level defaults are useful, but empty scores must still fail."""
     from app.services.llm_client import (
-        _fill_missing_top_level_fields, _validate_schema,
+        SchemaValidationError, _fill_missing_top_level_fields, _validate_schema,
     )
     from app.services.evaluator import EVAL_OUTPUT_SCHEMA
 
@@ -345,7 +396,12 @@ def test_permissive_fill_fills_missing_required_fields():
     filled = _fill_missing_top_level_fields(partial, EVAL_OUTPUT_SCHEMA)
     assert "narrative_review" in filled
     assert "root_causes" in filled
-    _validate_schema(filled, EVAL_OUTPUT_SCHEMA)
+    try:
+        _validate_schema(filled, EVAL_OUTPUT_SCHEMA)
+    except SchemaValidationError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("empty score structures must remain invalid")
 
 
 # ===========================================================================

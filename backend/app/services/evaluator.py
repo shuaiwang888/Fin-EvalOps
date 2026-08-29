@@ -49,6 +49,7 @@ EVAL_OUTPUT_SCHEMA: Dict[str, Any] = {
         "schema_version": {"type": "string"},
         "weight_assignment": {
             "type": "object",
+            "minProperties": 1,
             "additionalProperties": {
                 "type": "object",
                 "required": ["dynamic_weight", "applicability"],
@@ -80,6 +81,7 @@ EVAL_OUTPUT_SCHEMA: Dict[str, Any] = {
         },
         "dimension_scores": {
             "type": "object",
+            "minProperties": 1,
             "additionalProperties": {
                 "type": "object",
                 "required": ["raw_score"],
@@ -249,6 +251,16 @@ def evaluate_run(run_id: str) -> None:
             # We coerce here so a single bad shape doesn't fail the whole run.
             data = _sanitize_judge_output(data, channel, skill_row=skill_row)
 
+            issue = _scoring_payload_issue(data)
+            if issue:
+                _fail(
+                    db,
+                    run,
+                    channel,
+                    f"Judge 未返回可计算的完整评分:{issue}。系统已自动重试,请重新评测。",
+                )
+                return
+
             _emit(channel, "step", {"step": 2, "label": "链路诊断 + 根因归因"})
             _update(db, run, channel, status="scoring", progress=70, current_step="step2")
 
@@ -350,6 +362,7 @@ def _fail(db: Session, run: Run, channel: str, msg: str) -> None:
     run.status = "failed"
     run.error_msg = msg
     run.finished_at = datetime.now(timezone.utc)
+    run.current_step = "failed"
     # Caller's `db_session()` will commit on exit
     _emit(channel, "error", {"run_id": run.id, "message": msg})
 
@@ -374,6 +387,51 @@ _WEIGHT_FIELDS = {"dynamic_weight", "applicability", "rationale"}
 _DIM_SCORE_FIELDS = {"raw_score", "evidence", "confidence", "summary"}
 # Explicit keys some judge models use to label the dimension inside an entry.
 _DIM_NAME_KEYS = ("dim_name", "name", "dimension", "key", "id", "label")
+
+
+def _scoring_payload_issue(data: Any) -> str | None:
+    """Return why a judge payload cannot be scored, or ``None`` if valid.
+
+    An explicit all-zero evaluation remains valid. Empty or misaligned score
+    structures are provider/schema failures and must never become done/0.
+    """
+    if not isinstance(data, dict):
+        return "顶层结果不是对象"
+    weights = data.get("weight_assignment")
+    dims = data.get("dimension_scores")
+    if not isinstance(weights, dict) or not weights:
+        return "weight_assignment 为空"
+    if not isinstance(dims, dict) or not dims:
+        return "dimension_scores 为空"
+
+    valid_weights: set[str] = set()
+    for key, value in weights.items():
+        if not isinstance(value, dict):
+            continue
+        if (value.get("applicability") or "relevant") == "not_applicable":
+            continue
+        try:
+            if float(value.get("dynamic_weight", 0) or 0) > 0:
+                valid_weights.add(key)
+        except (TypeError, ValueError):
+            continue
+
+    valid_scores = {
+        key for key, value in dims.items()
+        if isinstance(value, dict) and value.get("raw_score") is not None
+    }
+    if not valid_weights:
+        return "没有正权重的适用维度"
+    if not valid_scores:
+        return "没有包含 raw_score 的维度"
+    if not (valid_weights & valid_scores):
+        return "权重维度与评分维度无法对应"
+    missing_scores = sorted(valid_weights - valid_scores)
+    if missing_scores:
+        preview = "、".join(missing_scores[:5])
+        suffix = "等" if len(missing_scores) > 5 else ""
+        return f"正权重维度缺少评分:{preview}{suffix}"
+    return None
 
 
 def _resolve_dim_names(data: dict, n: int, skill_row=None) -> list[str]:
@@ -507,11 +565,12 @@ def _sanitize_judge_output(data: dict, channel: str, skill_row=None) -> dict:
             _emit(channel, "step",
                   {"step": 1.5, "label": f"维度评分已从 {n} 项 unwrap"})
 
-    # 3) Default missing dimension_scores
+    # 3) Preserve a missing marker. The semantic validator will fail the run
+    #    explicitly instead of letting the scorer turn it into a fake zero.
     if not data.get("dimension_scores"):
         data["dimension_scores"] = {}
         _emit(channel, "step",
-              {"step": 1.5, "label": "dimension_scores 缺失,已默认空(分数会归 0)"})
+              {"step": 1.5, "label": "dimension_scores 缺失,本次结果将标记失败"})
 
     # 4) root_causes / caps / skipped_dimensions as parallel arrays
     for field in ("root_causes", "caps", "skipped_dimensions"):

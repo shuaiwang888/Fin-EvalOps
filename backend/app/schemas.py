@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # ---------------------- Common ----------------------
@@ -272,9 +272,24 @@ class TopFailureRow(BaseModel):
 
 
 # ---------------------- Data Agent ----------------------
+class AgentAnalysisContext(BaseModel):
+    scope: Literal["category", "testcase"]
+    category_code: Optional[str] = None
+    testcase_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_target(self):
+        if self.scope == "category" and not self.category_code:
+            raise ValueError("category scope requires category_code")
+        if self.scope == "testcase" and not self.testcase_id:
+            raise ValueError("testcase scope requires testcase_id")
+        return self
+
+
 class AgentMessageIn(BaseModel):
     content: str
     model: Optional[str] = None
+    context: Optional[AgentAnalysisContext] = None
 
 
 class AgentMessageOut(_OrmBase):

@@ -222,7 +222,7 @@ def call_with_schema(
     data = _sanitize_judge_for_validation(data, schema=schema)
     try:
         _validate_schema(data, schema)
-    except SchemaValidationError as exc:
+    except SchemaValidationError:
         # One last lenient attempt: drop required markers by adding empty
         # defaults so the validator sees a complete shape. This keeps the
         # eval pipeline alive when the judge forgets e.g. `narrative_review`.
@@ -232,14 +232,16 @@ def call_with_schema(
         data = _sanitize_judge_for_validation(data, schema=schema)
         try:
             _validate_schema(data, schema)
-        except SchemaValidationError:
-            # Final fallback: return the data as-is. Downstream evaluator
-            # sanitizers (evaluator._sanitize_judge_output) will fill in
-            # the rest. Better to record a partial result than to fail.
+        except SchemaValidationError as final_exc:
+            # Never return structurally invalid data as a successful result.
+            # The retry decorator will request a fresh completion; if all
+            # attempts fail, callers receive an explicit failure instead of a
+            # misleading done/0 run.
             log.warning(
                 "Schema validation still failed after sanitization for %s: %s",
-                spec.id, str(exc)[:200],
+                spec.id, str(final_exc)[:200],
             )
+            raise
     return LLMResult(
         data=data, raw_text=raw, tokens_in=tin, tokens_out=tout,
         latency_ms=latency_ms, model=spec.id, provider=spec.provider,
@@ -248,7 +250,7 @@ def call_with_schema(
 
 def _fill_missing_top_level_fields(data: dict, schema: dict) -> dict:
     """Best-effort fill of required top-level fields so the validator sees
-    a complete object. Keeps partial judge output usable downstream.
+    a complete object. The result still has to pass strict validation.
     """
     defaults_by_type: dict[str, Any] = {
         "object": {}, "array": [], "string": "", "number": 0, "integer": 0,
@@ -440,78 +442,6 @@ def _sanitize_judge_for_validation(data: Any, schema: dict | None = None) -> Any
             flat[dim_name] = clean
         if flat:
             data[field] = flat
-
-    return data
-
-    # matched_golden_cases: bare string → split on common separators
-    mgc = data.get("matched_golden_cases")
-    if isinstance(mgc, str):
-        parts = [p.strip() for p in re.split(r"[;\n|,]|Case\s+\d+[:：]", mgc) if p.strip()]
-        data["matched_golden_cases"] = parts if parts else []
-
-    def _coerce_numeric(item: dict, field_name: str) -> None:
-        v = item.get(field_name)
-        if isinstance(v, str):
-            try:
-                item[field_name] = float(v)
-            except (ValueError, TypeError):
-                item[field_name] = 0
-
-    # dimension_scores: per-dim raw_score string → float
-    ds = data.get("dimension_scores")
-    if isinstance(ds, dict):
-        for dim, sc in ds.items():
-            if isinstance(sc, dict):
-                _coerce_numeric(sc, "raw_score")
-
-    # root_causes: per-cause raw_score string → float
-    rc = data.get("root_causes")
-    if isinstance(rc, list):
-        for item in rc:
-            if isinstance(item, dict):
-                _coerce_numeric(item, "raw_score")
-
-    # caps: per-cap score_ceiling string → float
-    caps = data.get("caps")
-    if isinstance(caps, list):
-        for item in caps:
-            if isinstance(item, dict):
-                _coerce_numeric(item, "score_ceiling")
-
-    return data
-    mgc = data.get("matched_golden_cases")
-    if isinstance(mgc, str):
-        parts = [p.strip() for p in re.split(r"[;\n|,]|Case\s+\d+[:：]", mgc) if p.strip()]
-        data["matched_golden_cases"] = parts if parts else []
-
-    def _coerce_numeric(item: dict, field_name: str) -> None:
-        v = item.get(field_name)
-        if isinstance(v, str):
-            try:
-                item[field_name] = float(v)
-            except (ValueError, TypeError):
-                item[field_name] = 0
-
-    # dimension_scores: per-dim raw_score string → float
-    ds = data.get("dimension_scores")
-    if isinstance(ds, dict):
-        for dim, sc in ds.items():
-            if isinstance(sc, dict):
-                _coerce_numeric(sc, "raw_score")
-
-    # root_causes: per-cause raw_score string → float
-    rc = data.get("root_causes")
-    if isinstance(rc, list):
-        for item in rc:
-            if isinstance(item, dict):
-                _coerce_numeric(item, "raw_score")
-
-    # caps: per-cap score_ceiling string → float
-    caps = data.get("caps")
-    if isinstance(caps, list):
-        for item in caps:
-            if isinstance(item, dict):
-                _coerce_numeric(item, "score_ceiling")
 
     return data
 

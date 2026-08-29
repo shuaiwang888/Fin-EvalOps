@@ -51,7 +51,19 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     except Exception as exc:
         log.exception("Skill auto-sync failed (non-fatal): %s", exc)
 
-    # ---- 4) Start background HF pusher (debounced DB uploads) ----
+    # ---- 4) Reconcile jobs that could not survive a previous restart ----
+    try:
+        from .db import db_session
+        from .services.run_recovery import reconcile_runs
+        with db_session() as db:
+            recovered = reconcile_runs(db)
+        if recovered["interrupted"] or recovered["invalid_zero"]:
+            from . import persistence
+            persistence.mark_dirty()
+    except Exception as exc:
+        log.exception("Run reconciliation failed (non-fatal): %s", exc)
+
+    # ---- 5) Start background HF pusher (debounced DB uploads) ----
     try:
         from . import persistence
         persistence.start_pusher()
