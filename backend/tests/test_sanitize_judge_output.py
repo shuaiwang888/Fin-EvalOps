@@ -113,6 +113,26 @@ def test_eval_schema_rejects_empty_scoring_objects():
         raise AssertionError("empty scoring objects must fail schema validation")
 
 
+def test_llm_sanitizer_handles_union_schema_types():
+    from app.services.llm_client import _sanitize_judge_for_validation
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "answer": {"type": "string"},
+            "sql": {"type": ["string", "null"]},
+            "chart_spec": {"type": ["object", "null"]},
+        },
+    }
+    payload = {
+        "answer": "ok",
+        "sql": "SELECT 1",
+        "chart_spec": {"title": "test"},
+    }
+
+    assert _sanitize_judge_for_validation(payload, schema=schema) == payload
+
+
 def test_keeps_existing_dimension_scores():
     data = {
         "dimension_scores": {"dim_a": {"raw_score": 80, "evidence": ["e1"]}},

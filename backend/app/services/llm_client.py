@@ -358,8 +358,13 @@ def _sanitize_judge_for_validation(data: Any, schema: dict | None = None) -> Any
     if isinstance(schema, dict):
         props = schema.get("properties") or {}
         for fname, fschema in props.items():
-            expected = (fschema or {}).get("type")
-            if expected not in type_defaults:
+            declared = (fschema or {}).get("type")
+            declared_types = declared if isinstance(declared, list) else [declared]
+            expected = next(
+                (value for value in declared_types if value in type_defaults),
+                None,
+            )
+            if expected is None:
                 continue
             v = data.get(fname)
             if v is None:
