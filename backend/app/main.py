@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         from .services.run_recovery import reconcile_runs
         with db_session() as db:
             recovered = reconcile_runs(db)
-        if recovered["interrupted"] or recovered["invalid_zero"]:
+        if any(recovered.values()):
             from . import persistence
             persistence.mark_dirty()
     except Exception as exc:

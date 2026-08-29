@@ -78,6 +78,22 @@ def test_partial_dimension_scores_are_invalid():
     assert issue == "正权重维度缺少评分:evidence"
 
 
+def test_positional_weights_align_to_named_scores():
+    data = {
+        "weight_assignment": {
+            "dim_0": {"dynamic_weight": 60, "applicability": "relevant"},
+            "dim_1": {"dynamic_weight": 40, "applicability": "relevant"},
+        },
+        "dimension_scores": {
+            "accuracy": {"raw_score": 80},
+            "evidence": {"raw_score": 60},
+        },
+    }
+    fixed = _sanitize_judge_output(data, "test")
+    assert list(fixed["weight_assignment"]) == ["accuracy", "evidence"]
+    assert _scoring_payload_issue(fixed) is None
+
+
 def test_eval_schema_rejects_empty_scoring_objects():
     from app.services.llm_client import SchemaValidationError, _validate_schema
 

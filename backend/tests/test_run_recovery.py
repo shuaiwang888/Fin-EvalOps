@@ -13,7 +13,7 @@ def test_reconcile_marks_interrupted_and_fake_zero_but_preserves_real_zero():
     Base.metadata.create_all(engine)
 
     with Session(engine) as db:
-        batch = RunBatch(id="batch", judge_model="m", judge_provider="p", total=3)
+        batch = RunBatch(id="batch", judge_model="m", judge_provider="p", total=4)
         db.add(batch)
         db.add_all([
             Run(
@@ -33,17 +33,31 @@ def test_reconcile_marks_interrupted_and_fake_zero_but_preserves_real_zero():
                 },
                 dimension_scores={"accuracy": {"raw_score": 0}},
             ),
+            Run(
+                id="repairable-zero", batch_id="batch", testcase_id="tc4", skill_id="s",
+                judge_model="m", judge_provider="p", status="done", final_score=0,
+                weight_assignment={
+                    "dim_0": {"dynamic_weight": 60, "applicability": "relevant"},
+                    "dim_1": {"dynamic_weight": 40, "applicability": "relevant"},
+                },
+                dimension_scores={
+                    "accuracy": {"raw_score": 80},
+                    "evidence": {"raw_score": 60},
+                },
+            ),
         ])
         db.commit()
 
         result = reconcile_runs(db)
 
-        assert result == {"interrupted": 1, "invalid_zero": 1}
+        assert result == {"interrupted": 1, "invalid_zero": 1, "repaired_zero": 1}
         assert db.get(Run, "pending").status == "failed"
         assert "中断" in db.get(Run, "pending").error_msg
         assert db.get(Run, "fake-zero").status == "failed"
         assert db.get(Run, "fake-zero").final_score is None
         assert db.get(Run, "real-zero").status == "done"
         assert db.get(Run, "real-zero").final_score == 0
-        assert batch.done == 1
+        assert db.get(Run, "repairable-zero").final_score == 72
+        assert list(db.get(Run, "repairable-zero").weight_assignment) == ["accuracy", "evidence"]
+        assert batch.done == 2
         assert batch.failed == 2

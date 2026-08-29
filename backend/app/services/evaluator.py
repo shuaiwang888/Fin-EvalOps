@@ -12,6 +12,7 @@ enumeration would require maintaining 13 hard-coded lists.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -507,8 +508,7 @@ def _unwrap_item_array(
 
         clean = {k: v for k, v in entry.items()
                  if k in known_fields and v not in (None, "")}
-        # Don't keep `raw_score: 0` — scorer treats 0 as a real score, not a
-        # missing value. Empty dict still gets a 0 from scorer, which is correct.
+        # Keep `raw_score: 0`: zero is an explicit score, not a missing value.
         out[dim_name] = clean
 
     return out, len(items)
@@ -564,6 +564,34 @@ def _sanitize_judge_output(data: dict, channel: str, skill_row=None) -> dict:
             data["dimension_scores"] = flat
             _emit(channel, "step",
                   {"step": 1.5, "label": f"维度评分已从 {n} 项 unwrap"})
+
+    # Providers sometimes return generic positional keys on only one side.
+    # Equal-length mappings preserve order, so align that side to the named
+    # keys. Unequal lengths remain invalid and are rejected semantically.
+    wa = data.get("weight_assignment")
+    ds = data.get("dimension_scores")
+    if isinstance(wa, dict) and isinstance(ds, dict) and len(wa) == len(ds) and wa:
+        positional = re.compile(r"^dim_(\d+)$")
+        wa_positional = all(positional.fullmatch(str(key)) for key in wa)
+        ds_positional = all(positional.fullmatch(str(key)) for key in ds)
+        if wa_positional and not ds_positional:
+            ordered_weights = [
+                value for key, value in sorted(
+                    wa.items(),
+                    key=lambda item: int(positional.fullmatch(str(item[0])).group(1)),
+                )
+            ]
+            data["weight_assignment"] = dict(zip(ds.keys(), ordered_weights))
+            _emit(channel, "step", {"step": 1.5, "label": "权重位置键已对齐评分维度"})
+        elif ds_positional and not wa_positional:
+            ordered_scores = [
+                value for key, value in sorted(
+                    ds.items(),
+                    key=lambda item: int(positional.fullmatch(str(item[0])).group(1)),
+                )
+            ]
+            data["dimension_scores"] = dict(zip(wa.keys(), ordered_scores))
+            _emit(channel, "step", {"step": 1.5, "label": "评分位置键已对齐权重维度"})
 
     # 3) Preserve a missing marker. The semantic validator will fail the run
     #    explicitly instead of letting the scorer turn it into a fake zero.
