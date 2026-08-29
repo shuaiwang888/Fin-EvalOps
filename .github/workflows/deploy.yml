@@ -45,8 +45,8 @@ jobs:
           VITE_BASE_PATH: ${{ vars.VITE_BASE_PATH || '/Fin-EvalOps/' }}
         run: npm run build
 
-      - name: Copy 404 fallback (React Router on Pages)
-        run: cp dist/index.html dist/404.html
+      - name: Verify deep-link fallback
+        run: test -f dist/404.html
 
       - name: Verify no secret leaked into bundle
         run: |

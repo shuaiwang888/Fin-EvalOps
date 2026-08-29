@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>正在打开 Fin-EvalOps…</title>
+  </head>
+  <body>
+    <p>正在打开 Fin-EvalOps…</p>
+    <script>
+      // GitHub Pages cannot serve history-based SPA routes with a 200 status.
+      // Preserve old shared links by converting the path to a hash route.
+      const parts = window.location.pathname.split("/").filter(Boolean);
+      const base = parts.length ? `/${parts[0]}/` : "/";
+      const route = parts.slice(1).join("/");
+      window.location.replace(`${base}#/${route}${window.location.search}`);
+    </script>
+  </body>
+</html>
