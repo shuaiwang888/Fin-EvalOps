@@ -170,6 +170,9 @@ class Run(Base):
 
     testcase: Mapped[TestCase] = relationship(back_populates="runs")
     batch: Mapped[Optional[RunBatch]] = relationship(back_populates="runs")
+    annotations: Mapped[list["Annotation"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
 
 
 Index("ix_runs_skill_model_created", Run.skill_id, Run.judge_model, Run.created_at)
@@ -186,6 +189,8 @@ class Annotation(Base):
     comment: Mapped[str] = mapped_column(Text, default="")
     is_golden: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    run: Mapped[Run] = relationship(back_populates="annotations")
 
 
 # ---------------------- Data Agent chat history ----------------------

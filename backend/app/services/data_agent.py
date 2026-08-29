@@ -151,8 +151,10 @@ def reply(session_id: str, user_text: str, model_id: Optional[str] = None) -> di
         if not sess.title or sess.title == "New conversation":
             sess.title = user_text[:60]
 
+    # The user message was committed above, so `_build_history` already
+    # contains the current turn. Appending it again makes the LLM see every
+    # question twice and can produce duplicated SQL/answers.
     history = _build_history(session_id)
-    history.append({"role": "user", "content": user_text})
 
     result = llm_client.call_with_schema(
         model_id=model_id,

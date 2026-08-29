@@ -10,6 +10,7 @@ import {
   Empty,
   Popconfirm,
   message,
+  Alert,
 } from "antd";
 import {
   SendOutlined,
@@ -25,6 +26,7 @@ import ReactECharts from "echarts-for-react";
 import dayjs from "dayjs";
 
 import { agentApi } from "../../api/agent";
+import { modelsApi } from "../../api/runs";
 import ModelPicker from "../../components/ModelPicker";
 import MarkdownView from "../../components/MarkdownView";
 import type { AgentMessage } from "../../api/types";
@@ -48,14 +50,13 @@ export default function Agent() {
     "/api/agent/sessions",
     agentApi.listSessions
   );
+  const activeSid = sid ?? sessions?.[0]?.id ?? null;
+  const { data: availableModels } = useSWR("/api/models", modelsApi.list);
+  const hasModel = (availableModels?.length ?? 0) > 0;
   const { data: messages, mutate: refreshMessages } = useSWR(
-    sid ? `/api/agent/sessions/${sid}/messages` : null,
-    () => agentApi.listMessages(sid!)
+    activeSid ? `/api/agent/sessions/${activeSid}/messages` : null,
+    () => agentApi.listMessages(activeSid!)
   );
-
-  useEffect(() => {
-    if (!sid && sessions && sessions.length > 0) setSid(sessions[0].id);
-  }, [sessions, sid]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -70,7 +71,7 @@ export default function Agent() {
   const send = async (text?: string) => {
     const content = (text ?? input).trim();
     if (!content) return;
-    if (!sid) {
+    if (!activeSid) {
       const s = await agentApi.createSession(model);
       refreshSessions();
       // Send directly using the freshly-created session id; avoids racing the
@@ -80,7 +81,8 @@ export default function Agent() {
       try {
         await agentApi.sendMessage(s.id, content, model);
         refreshSessions();
-      } catch (err) {
+      } catch {
+        setInput(content);
         message.error("发送失败,请重试");
       } finally {
         setSending(false);
@@ -92,22 +94,24 @@ export default function Agent() {
     setInput("");
     setSending(true);
     try {
-      await agentApi.sendMessage(sid, content, model);
+      await agentApi.sendMessage(activeSid, content, model);
       refreshMessages();
       refreshSessions();
+    } catch {
+      setInput(content);
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <div style={{ display: "flex", gap: 16, height: "calc(100vh - 56px - 60px - 32px - 32px)" }}>
+    <div className="agent-workspace">
       <Card
         size="small"
         title="对话列表"
-        style={{ width: 260 }}
+        className="agent-sessions"
         bodyStyle={{ padding: 0, overflow: "auto", flex: 1 }}
-        extra={<Button size="small" type="primary" icon={<PlusOutlined />} onClick={newSession}>新建</Button>}
+        extra={<Button size="small" type="primary" disabled={!hasModel} icon={<PlusOutlined />} onClick={newSession}>新建</Button>}
       >
         <List
           dataSource={sessions || []}
@@ -117,7 +121,7 @@ export default function Agent() {
               style={{
                 padding: "8px 12px",
                 cursor: "pointer",
-                background: s.id === sid ? "#e6f4ff" : "transparent",
+                background: s.id === activeSid ? "rgba(0,113,227,.08)" : "transparent",
               }}
               onClick={() => setSid(s.id)}
               actions={[
@@ -127,12 +131,21 @@ export default function Agent() {
                   onConfirm={async (e) => {
                     e?.stopPropagation();
                     await agentApi.deleteSession(s.id);
-                    if (sid === s.id) setSid(null);
+                    if (activeSid === s.id) {
+                      setSid(sessions?.find((item) => item.id !== s.id)?.id ?? null);
+                    }
                     refreshSessions();
                     message.success("已删除");
                   }}
                 >
-                  <DeleteOutlined onClick={(e) => e.stopPropagation()} />
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    aria-label={`删除对话 ${s.title || "新对话"}`}
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                 </Popconfirm>,
               ]}
             >
@@ -163,6 +176,14 @@ export default function Agent() {
         style={{ flex: 1, display: "flex", flexDirection: "column" }}
         bodyStyle={{ flex: 1, display: "flex", flexDirection: "column", padding: 0 }}
       >
+        {!hasModel && (
+          <Alert
+            type="warning"
+            showIcon
+            banner
+            message="配置至少一个 LLM Provider 后即可开始数据分析"
+          />
+        )}
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: 16 }}>
           {(!messages || messages.length === 0) ? (
             <Empty
@@ -171,7 +192,7 @@ export default function Agent() {
                   <span>开始一段对话,例如:</span>
                   <Space wrap>
                     {SAMPLE_PROMPTS.map((p) => (
-                      <Button key={p} size="small" onClick={() => send(p)}>{p}</Button>
+                      <Button key={p} size="small" disabled={!hasModel} onClick={() => send(p)}>{p}</Button>
                     ))}
                   </Space>
                 </Space>
@@ -194,12 +215,13 @@ export default function Agent() {
                 send();
               }
             }}
-            disabled={sending}
+            disabled={sending || !hasModel}
           />
           <Button
             type="primary"
             icon={<SendOutlined />}
             loading={sending}
+            disabled={!hasModel}
             onClick={() => send()}
           >发送</Button>
         </div>

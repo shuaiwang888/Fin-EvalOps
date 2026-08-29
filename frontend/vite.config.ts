@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     envPrefix: "VITE_",
     base: env.VITE_BASE_PATH || "/",
     resolve: {
-      alias: { "@": path.resolve(__dirname, "src") },
+      alias: { "@": path.resolve(import.meta.dirname, "src") },
     },
     server: {
       port: 5173,
@@ -26,13 +26,14 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: "dist",
       sourcemap: false,
-      chunkSizeWarningLimit: 1200,
+      chunkSizeWarningLimit: 650,
       rollupOptions: {
         output: {
-          manualChunks: {
-            vendor: ["react", "react-dom", "react-router-dom"],
-            antd: ["antd", "@ant-design/icons"],
-            charts: ["echarts", "echarts-for-react"],
+          manualChunks(id) {
+            if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/") || id.includes("node_modules/react-router")) {
+              return "react-vendor";
+            }
+            return undefined;
           },
         },
       },

@@ -77,7 +77,7 @@ export default function Skills() {
                 </Col>
               )}
               {(data || []).map((s) => (
-                <Col span={8} key={s.id}>
+                <Col xs={24} md={12} xl={8} key={s.id}>
                   <SkillCard skill={s} />
                 </Col>
               ))}

@@ -26,16 +26,30 @@ from .. import persistence as hf_persistence  # HF Datasets sync (no-op if uncon
 router = APIRouter()
 
 
+def _resolve_model(model_id: str | None):
+    try:
+        return llm_client.resolve_model(model_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+
 # ----------------------------------------------------------------------------
 # Routing preview (no run created)
 # ----------------------------------------------------------------------------
 @router.post("/route", response_model=RouteResponse)
 def preview_route(body: RouteRequest):
-    r = skill_router.route(
-        body.question,
-        judge_model=body.judge_model,
-        hint_skill_id=body.hint_skill,
-    )
+    try:
+        r = skill_router.route(
+            body.question,
+            judge_model=body.judge_model,
+            hint_skill_id=body.hint_skill,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
     return RouteResponse(
         predicted_skill=r.skill_code,
         skill_id=r.skill_id,
@@ -84,7 +98,7 @@ def create_run(body: RunCreate, bg: BackgroundTasks, db: Session = Depends(get_d
     if not skill:
         raise HTTPException(400, f"Skill {skill_id} unknown")
 
-    spec = llm_client.resolve_model(body.judge_model)
+    spec = _resolve_model(body.judge_model)
     run = Run(
         testcase_id=tc.id,
         skill_id=skill.id,
@@ -113,7 +127,19 @@ def create_batch(body: RunBatchCreate, bg: BackgroundTasks, db: Session = Depend
             raise HTTPException(400, "skill_id required when strategy=manual")
         if not db.get(Skill, body.skill_id):
             raise HTTPException(400, f"Skill {body.skill_id} not found")
-    spec = llm_client.resolve_model(body.judge_model)
+    spec = _resolve_model(body.judge_model)
+
+    existing_ids = {
+        value
+        for (value,) in db.query(TestCase.id)
+        .filter(TestCase.id.in_(body.testcase_ids))
+        .all()
+    }
+    missing_ids = [value for value in body.testcase_ids if value not in existing_ids]
+    if missing_ids:
+        preview = ", ".join(missing_ids[:5])
+        suffix = "…" if len(missing_ids) > 5 else ""
+        raise HTTPException(400, f"以下测试样本不存在: {preview}{suffix}")
 
     batch = RunBatch(
         id=uuid.uuid4().hex,
@@ -129,8 +155,6 @@ def create_batch(body: RunBatchCreate, bg: BackgroundTasks, db: Session = Depend
     run_ids: list[str] = []
     for tc_id in body.testcase_ids:
         tc = db.get(TestCase, tc_id)
-        if not tc:
-            continue
         routing_meta = None
         skill_id = body.skill_id
         if body.skill_strategy == "auto":
@@ -230,18 +254,6 @@ def list_runs(
     }
 
 
-@router.get("/runs/{run_id}", response_model=RunDetail)
-def get_run(run_id: str, db: Session = Depends(get_db)):
-    row = db.get(Run, run_id)
-    if not row:
-        raise HTTPException(404)
-    # Attach question to the response
-    tc = db.get(TestCase, row.testcase_id) if row.testcase_id else None
-    out = RunDetail.model_validate(row).model_dump()
-    out["testcase_question"] = tc.question if tc else None
-    return out
-
-
 # ----------------------------------------------------------------------------
 # Delete
 # ----------------------------------------------------------------------------
@@ -312,6 +324,7 @@ def rerun(run_id: str, bg: BackgroundTasks, db: Session = Depends(get_db)):
     db.add(new)
     db.commit()
     db.refresh(new)
+    hf_persistence.mark_dirty()
     bg.add_task(evaluator.evaluate_run, new.id)
     return new
 
@@ -338,3 +351,16 @@ def get_batch(batch_id: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(b)
     return b
+
+
+# Keep the dynamic one-segment route last. Otherwise it swallows the static
+# GET /runs/batches endpoint above and the batch list becomes unreachable.
+@router.get("/runs/{run_id}", response_model=RunDetail)
+def get_run(run_id: str, db: Session = Depends(get_db)):
+    row = db.get(Run, run_id)
+    if not row:
+        raise HTTPException(404)
+    tc = db.get(TestCase, row.testcase_id) if row.testcase_id else None
+    out = RunDetail.model_validate(row).model_dump()
+    out["testcase_question"] = tc.question if tc else None
+    return out

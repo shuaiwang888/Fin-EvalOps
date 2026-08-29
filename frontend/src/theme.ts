@@ -1,64 +1,78 @@
-import { theme } from "antd";
 import type { ThemeConfig } from "antd";
 
-// Financial blue brand. Uses AntD compactAlgorithm for higher data density
-// suitable for an ops dashboard.
 export const finTheme: ThemeConfig = {
   token: {
-    colorPrimary: "#0958d9",
-    colorInfo: "#0958d9",
-    colorSuccess: "#52c41a",
-    colorWarning: "#faad14",
-    colorError: "#ff4d4f",
-    borderRadius: 6,
+    colorPrimary: "#0071e3",
+    colorInfo: "#0071e3",
+    colorSuccess: "#248a3d",
+    colorWarning: "#b25000",
+    colorError: "#d70015",
+    colorText: "#1d1d1f",
+    colorTextSecondary: "#6e6e73",
+    colorBgLayout: "#f5f5f7",
+    colorBgContainer: "rgba(255,255,255,0.88)",
+    colorBorderSecondary: "rgba(0,0,0,0.07)",
+    borderRadius: 12,
+    borderRadiusLG: 20,
+    controlHeight: 38,
+    fontSize: 14,
     fontFamily:
-      '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+      '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif',
+    boxShadowTertiary: "0 10px 32px rgba(0, 0, 0, 0.06)",
   },
-  algorithm: [theme.defaultAlgorithm, theme.compactAlgorithm],
   components: {
-    Layout: {
-      headerBg: "#001d66",
-      headerColor: "#ffffff",
-      headerHeight: 56,
-      siderBg: "#f0f5ff",
-      bodyBg: "#fafafa",
-    },
-    Menu: {
-      itemSelectedBg: "#bae0ff",
-      itemSelectedColor: "#0958d9",
-    },
-    Table: {
-      headerBg: "#f5f5f5",
-      cellPaddingBlock: 8,
+    Button: {
+      borderRadius: 999,
+      primaryShadow: "0 4px 14px rgba(0,113,227,.2)",
+      fontWeight: 560,
     },
     Card: {
-      paddingLG: 16,
+      paddingLG: 20,
+      headerFontSize: 15,
+    },
+    Drawer: {
+      borderRadiusLG: 22,
+    },
+    Layout: {
+      headerBg: "transparent",
+      bodyBg: "#f5f5f7",
+      siderBg: "transparent",
+    },
+    Menu: {
+      itemBg: "transparent",
+      itemSelectedBg: "rgba(0,113,227,.10)",
+      itemSelectedColor: "#0066cc",
+      itemBorderRadius: 12,
+      itemHeight: 42,
+      itemMarginInline: 8,
+      groupTitleColor: "#86868b",
+    },
+    Modal: {
+      borderRadiusLG: 22,
+    },
+    Table: {
+      headerBg: "rgba(245,245,247,.9)",
+      headerColor: "#6e6e73",
+      rowHoverBg: "rgba(0,113,227,.035)",
+      cellPaddingBlock: 10,
+    },
+    Tabs: {
+      itemSelectedColor: "#0066cc",
+      inkBarColor: "#0071e3",
     },
   },
 };
 
-// Stage colors used in run-detail timeline + radar
 export const PALETTE = [
-  "#0958d9",
-  "#13c2c2",
-  "#722ed1",
-  "#fa8c16",
-  "#52c41a",
-  "#eb2f96",
-  "#fadb14",
-  "#1677ff",
-  "#a0d911",
-  "#f5222d",
-  "#9254de",
-  "#08979c",
-  "#d4b106",
+  "#0071e3", "#00a7b5", "#7d43d6", "#e66d00", "#248a3d", "#d30f6c",
+  "#8a7400", "#409cff", "#5e8d00", "#d70015", "#8e5dd9", "#007d8a", "#a06400",
 ];
 
 export const SCORE_BAND = {
-  excellent: { min: 85, color: "#52c41a", label: "优秀" },
-  good: { min: 70, color: "#1677ff", label: "良好" },
-  pass: { min: 60, color: "#faad14", label: "及格" },
-  fail: { min: 0, color: "#ff4d4f", label: "不及格" },
+  excellent: { min: 85, color: "#248a3d", label: "优秀" },
+  good: { min: 70, color: "#0071e3", label: "良好" },
+  pass: { min: 60, color: "#b25000", label: "及格" },
+  fail: { min: 0, color: "#d70015", label: "不及格" },
 };
 
 export function scoreBand(score?: number | null) {

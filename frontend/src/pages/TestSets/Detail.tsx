@@ -112,7 +112,7 @@ export default function TestSetDetail() {
             },
             {
               key: "answer",
-              label: "期望答案",
+              label: "Agent 回答",
               children: (
                 <Card type="inner" size="small">
                   <MarkdownView text={data.agent_answer} />
@@ -161,7 +161,7 @@ export default function TestSetDetail() {
           <Form.Item name="question" label="问题" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
-          <Form.Item name="agent_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
+          <Form.Item name="agent_answer" label="Agent 回答 (Markdown)" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 8, maxRows: 20 }} />
           </Form.Item>
         </Form>

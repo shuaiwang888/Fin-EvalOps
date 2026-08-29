@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     hf_dataset_repo: str = "fin-evalops-db"
     hf_push_interval: int = 300
 
+    # Protect destructive/operational admin mutations exposed by the API.
+    # Read-only health and persistence status remain public.
+    admin_api_token: str = ""
+
     # ----- Misc -----
     log_level: str = "INFO"
 
@@ -126,6 +130,8 @@ class Settings(BaseSettings):
     def default_judge_model_live(self) -> str: return _env("DEFAULT_JUDGE_MODEL", self.default_judge_model)
     @property
     def iwencai_base_url_live(self) -> str:    return _env("IWENCAI_BASE_URL")
+    @property
+    def admin_api_token_live(self) -> str:     return _env("ADMIN_API_TOKEN")
     @property
     def iwencai_verify_ssl_live(self) -> bool:
         v = os.environ.get("IWENCAI_VERIFY_SSL", "").lower()
@@ -187,14 +193,17 @@ class Settings(BaseSettings):
             "DEEPSEEK_API_KEY", "MINIMAX_API_KEY", "MINIMAX_BASE_URL",
             "HF_TOKEN", "HF_NAMESPACE", "HF_DATASET_REPO", "HF_PUSH_INTERVAL",
             "CORS_ORIGINS", "DEFAULT_JUDGE_MODEL", "IWENCAI_BASE_URL",
-            "IWENCAI_VERIFY_SSL",
+            "IWENCAI_VERIFY_SSL", "ADMIN_API_TOKEN",
         ]
         out: dict = {}
         for k in keys:
             v = os.environ.get(k)
             if v:
                 if "KEY" in k or "TOKEN" in k:
-                    out[k] = f"set ({len(v)} chars, prefix={v[:6]}…)" if len(v) >= 6 else "set (too short)"
+                    # This payload is exposed by a read-only diagnostics endpoint.
+                    # Even a short prefix is unnecessary secret material, so only
+                    # report presence and length.
+                    out[k] = f"set ({len(v)} chars)"
                 else:
                     out[k] = v
             else:

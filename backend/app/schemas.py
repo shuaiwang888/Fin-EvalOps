@@ -164,7 +164,7 @@ class RouteResponse(BaseModel):
     skill_id: str
     confidence: float
     reasoning: str
-    alternatives: List[RouteAlternative] = []
+    alternatives: List[RouteAlternative] = Field(default_factory=list)
     stage_used: Literal["keyword", "llm", "fallback", "hint"] = "llm"
     fallback: bool = False
 
@@ -183,6 +183,13 @@ class RunBatchCreate(BaseModel):
     skill_id: Optional[str] = None  # required when strategy == manual
     judge_model: Optional[str] = None
     label: Optional[str] = None
+
+    @field_validator("testcase_ids")
+    @classmethod
+    def _unique_testcase_ids(cls, value: List[str]) -> List[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("testcase_ids 不可包含重复项")
+        return value
 
 
 class RunBrief(_OrmBase):
@@ -290,7 +297,7 @@ class AgentSessionBrief(_OrmBase):
 
 
 class AgentSessionDetail(AgentSessionBrief):
-    messages: List[AgentMessageOut] = []
+    messages: List[AgentMessageOut] = Field(default_factory=list)
 
 
 # ---------------------- Annotation ----------------------

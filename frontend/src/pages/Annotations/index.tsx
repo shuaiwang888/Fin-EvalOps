@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   Card,
+  Button,
   Table,
   Tag,
   Space,
@@ -8,13 +9,13 @@ import {
   Form,
   Input,
   Switch,
-  Select,
   message,
   Alert,
 } from "antd";
 import { PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import useSWR from "swr";
 import dayjs from "dayjs";
+import { Link } from "react-router-dom";
 
 import { http } from "../../api/client";
 
@@ -28,7 +29,6 @@ interface Annotation {
   created_at: string;
 }
 
-// P1 — human review covering LLM-judged dimensions.
 export default function Annotations() {
   const { data, mutate, isLoading } = useSWR("/api/annotations", () =>
     http.get<Annotation[]>("/api/annotations").then((r) => r.data)
@@ -41,16 +41,16 @@ export default function Annotations() {
       <Alert
         type="info"
         showIcon
-        message="人工标注 (P1)"
-        description="标注 LLM judge 的结果。可逐维度覆盖打分,标记 golden 后用于回归比对。"
+        message="人工复核校准"
+        description="复核 LLM Judge 的结果；逐维度覆盖打分，标记 Golden 后可用于回归比对。"
         style={{ marginBottom: 12 }}
       />
       <Card
         title={`标注记录 (${data?.length ?? 0})`}
         extra={
           <Space>
-            <a onClick={() => mutate()}><ReloadOutlined /></a>
-            <a onClick={() => setOpen(true)}><PlusOutlined /> 新增</a>
+            <Button type="text" aria-label="刷新标注" icon={<ReloadOutlined />} onClick={() => mutate()} />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>新增复核</Button>
           </Space>
         }
       >
@@ -64,7 +64,7 @@ export default function Annotations() {
               title: "Run",
               dataIndex: "run_id",
               key: "run_id",
-              render: (v: string) => <a href={`/runs/${v}`}>{v.slice(0, 8)}</a>,
+              render: (v: string) => <Link to={`/runs/${v}`}>{v.slice(0, 8)}</Link>,
             },
             { title: "评审员", dataIndex: "reviewer", key: "reviewer" },
             {

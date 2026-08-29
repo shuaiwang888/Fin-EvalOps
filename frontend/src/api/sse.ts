@@ -28,7 +28,7 @@ function _subscribe(path: string, h: SSEHandlers): () => void {
 
   const safe = (name: string, cb?: (data: any) => void) => {
     es.addEventListener(name, (ev: MessageEvent) => {
-      let data: any = null;
+      let data: any;
       try {
         data = JSON.parse(ev.data);
       } catch {

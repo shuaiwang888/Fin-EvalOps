@@ -14,6 +14,7 @@ import {
   Tree,
   Tooltip,
   Popconfirm,
+  Alert,
 } from "antd";
 import {
   UploadOutlined,
@@ -31,7 +32,7 @@ import useSWR from "swr";
 import dayjs from "dayjs";
 
 import { testsetsApi } from "../../api/testsets";
-import { runsApi } from "../../api/runs";
+import { modelsApi, runsApi } from "../../api/runs";
 import type { TestCaseBrief, TestCategory } from "../../api/types";
 
 const { Search } = Input;
@@ -98,7 +99,7 @@ export default function TestSets() {
   const [batchLabel, setBatchLabel] = useState("");
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const { data: models } = useSWR("/api/models", () =>
-    fetch("/api/models").then((r) => r.json()).then((d) => d.models)
+    modelsApi.list()
   );
 
   const submitBatchEval = async () => {
@@ -171,8 +172,7 @@ export default function TestSets() {
   // auto-select it.
   const renderCategoryPicker = (
     value: string | undefined,
-    onChange: (v: string | undefined) => void,
-    required = false
+    onChange: (v: string | undefined) => void
   ) => (
     <Space.Compact style={{ width: "100%" }}>
       <Select
@@ -200,7 +200,7 @@ export default function TestSets() {
   );
 
   return (
-    <div style={{ display: "flex", gap: 16 }}>
+    <div className="split-workspace testsets-workspace">
       <Card style={{ width: 240 }} size="small" title="分类">
         <Tree
           showLine
@@ -218,7 +218,7 @@ export default function TestSets() {
         style={{ flex: 1 }}
         title={`测试样本(共 ${data?.total ?? 0} 条)`}
         extra={
-          <Space>
+          <Space wrap>
             <Tooltip title="扫描 数据测试集/ 目录,upsert 到数据库">
               <Button icon={<SyncOutlined />} onClick={handleScanDisk}>磁盘同步</Button>
             </Tooltip>
@@ -402,7 +402,7 @@ export default function TestSets() {
           <Form.Item name="question" label="问题" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
-          <Form.Item name="agent_answer" label="期望答案 (Markdown)" rules={[{ required: true }]}>
+          <Form.Item name="agent_answer" label="Agent 回答 (Markdown)" rules={[{ required: true }]}>
             <Input.TextArea autoSize={{ minRows: 6, maxRows: 16 }} />
           </Form.Item>
         </Form>
@@ -557,10 +557,20 @@ export default function TestSets() {
         okText="开始评测"
         cancelText="取消"
         confirmLoading={batchSubmitting}
+        okButtonProps={{ disabled: (models?.length ?? 0) === 0 }}
         onOk={submitBatchEval}
       >
         <Form layout="vertical">
-          <Form.Item label="判分模型" required>
+          {(models?.length ?? 0) === 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message="没有可用的判分模型"
+              description="请先在后端配置至少一个 LLM Provider，再开始评测。"
+              style={{ marginBottom: 16 }}
+            />
+          )}
+          <Form.Item label="判分模型">
             <Select
               placeholder="默认使用 DEFAULT_JUDGE_MODEL"
               allowClear
@@ -629,7 +639,6 @@ function CategoryQuickCreate(props: {
           placeholder="例如:2025Q3 回归批次"
           onChange={(e) => {
             // Auto-suggest a code only if the user hasn't manually edited it yet.
-            const current = props.form.getFieldValue("code");
             const touched = props.form.isFieldTouched("code");
             if (!touched) {
               props.form.setFieldValue(
@@ -646,7 +655,7 @@ function CategoryQuickCreate(props: {
         extra="1-32 字符,允许中文/字母/数字/-/_,后续作为导入/查询的标识,确定后不可修改"
         rules={[
           { required: true, message: "请输入分类编码" },
-          { pattern: /^[\w一-鿿\-]+$/u, message: "仅允许中英文字母、数字、下划线、连字符" },
+          { pattern: /^[\w一-鿿-]+$/u, message: "仅允许中英文字母、数字、下划线、连字符" },
           { max: 32, message: "不可超过 32 字符" },
         ]}
       >

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+import secrets
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
@@ -82,7 +83,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list or ["*"],
-    allow_credentials=True,
+    # The app uses header/token based requests and no cross-site cookies.
+    # Keeping this false also makes the wildcard development fallback valid.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Run-Id", "X-Batch-Id"],
@@ -148,7 +151,7 @@ def diagnose() -> dict:
 
     Use this when an admin endpoint shows one thing but the live app behaves
     differently — e.g. Settings shows 0 models but a key is in the dashboard.
-    Secret-shaped values are masked (prefix + length only).
+    Secret-shaped values report presence and length only; no value fragment is exposed.
     """
     from . import persistence
     return {
@@ -178,8 +181,16 @@ def _models_snapshot() -> list[dict]:
     return out
 
 
+def _require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
+    expected = settings.admin_api_token_live
+    if not expected:
+        raise HTTPException(503, "ADMIN_API_TOKEN is not configured; admin mutations are disabled")
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, expected):
+        raise HTTPException(401, "Invalid admin token")
+
+
 @app.post("/api/admin/persistence/push", tags=["meta"])
-def persistence_force_push() -> dict:
+def persistence_force_push(_: None = Depends(_require_admin_token)) -> dict:
     """Force an immediate push of the current DB to HF (bypasses dirty flag).
     Useful after manual edits or for one-off snapshots."""
     from . import persistence
@@ -188,7 +199,7 @@ def persistence_force_push() -> dict:
 
 
 @app.post("/api/admin/persistence/pull", tags=["meta"])
-def persistence_force_pull() -> dict:
+def persistence_force_pull(_: None = Depends(_require_admin_token)) -> dict:
     """Force a pull from HF (overwrites local DB). Destructive."""
     from . import persistence
     ok = persistence.pull_db(force=True)

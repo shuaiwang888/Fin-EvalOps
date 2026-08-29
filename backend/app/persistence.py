@@ -43,7 +43,18 @@ log = logging.getLogger(__name__)
 # cached settings values for tooling that runs without env.
 # ---------------------------------------------------------------------------
 def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name) or getattr(settings, name, default) or default
+    direct = os.environ.get(name)
+    if direct:
+        return direct
+    # Pydantic loads `.env` into lower-case Settings attributes; it does not
+    # necessarily populate os.environ. Prefer a live property when present,
+    # then fall back to the cached field so local persistence works too.
+    live_attr = f"{name.lower()}_live"
+    if hasattr(settings, live_attr):
+        value = getattr(settings, live_attr)
+        if value:
+            return str(value)
+    return str(getattr(settings, name.lower(), default) or default)
 
 
 def _hf_configured() -> bool:
@@ -218,13 +229,13 @@ def start_pusher(interval: Optional[int] = None) -> None:
     global _pusher_thread
     if not _hf_configured():
         return
-    if settings.hf_push_interval <= 0:
+    if settings.hf_push_interval_live <= 0:
         log.info("HF pusher disabled (HF_PUSH_INTERVAL=0)")
         return
     if _pusher_thread and _pusher_thread.is_alive():
         return
     _stop_event.clear()
-    iv = interval if interval is not None else settings.hf_push_interval
+    iv = interval if interval is not None else settings.hf_push_interval_live
     t = threading.Thread(
         target=_pusher_loop, args=(iv,), daemon=True, name="hf-db-pusher",
     )
@@ -235,6 +246,7 @@ def start_pusher(interval: Optional[int] = None) -> None:
 
 def stop_pusher(timeout: float = 5.0) -> None:
     """Signal the pusher to stop and wait briefly for it to exit."""
+    global _pusher_thread
     _stop_event.set()
     if _pusher_thread and _pusher_thread.is_alive():
         _pusher_thread.join(timeout=timeout)

@@ -63,6 +63,7 @@ git push
 | `HF_NAMESPACE` | Variable | `<NAMESPACE>` | ✅ |
 | `HF_DATASET_REPO` | Variable | `fin-evalops-db` | ❌(默认) |
 | `HF_PUSH_INTERVAL` | Variable | `300` | ❌(默认 300 秒) |
+| `ADMIN_API_TOKEN` | **Secret** | `<随机长令牌>` | 管理写接口必填 |
 | `ANTHROPIC_API_KEY` | **Secret** | `sk-ant-...` | 用于评测 |
 | `OPENAI_API_KEY` | **Secret** | `sk-...` | 用于评测 |
 | `DASHSCOPE_API_KEY` | **Secret** | `sk-...` | 用于评测 |
@@ -71,7 +72,7 @@ git push
 | `MINIMAX_BASE_URL` | Variable | `https://api.minimaxi.com/anthropic` | ❌ |
 | `DEFAULT_JUDGE_MODEL` | Variable | `claude-sonnet-4-6` | ❌ |
 | `CORS_ORIGINS` | Variable | `https://shuaiwang888.github.io` | 前端用 |
-| `IWENCAI_BASE_URL` | **Secret** | `https://117.50.195.94:2879` | 内网用 |
+| `IWENCAI_BASE_URL` | **Secret** | `<IWENCAI_INTERNAL_URL>` | 内网用 |
 | `IWENCAI_VERIFY_SSL` | Variable | `false` | 内网自签证书 |
 
 > Secret 不会出现在 logs 中。**绝对不要**用 Variable 存 key。
@@ -108,13 +109,14 @@ curl -fsS "$SPACE/api/admin/persistence" | jq
 # 3) Skill 列表
 curl -fsS "$SPACE/api/skills" | jq '.[0:3]'
 
-# 4) 测试样本数量(应该 65)
-curl -fsS "$SPACE/api/testsets/testcases?limit=200" | jq '.total'
+# 4) 测试集列表
+curl -fsS "$SPACE/api/testsets?page=1&page_size=200" | jq '.total'
 ```
 
 第一次进 Space 时数据是空的(`/data` 是新挂载的临时盘 + Dataset 也没数据),这是正常。
-所有读写 API 都可以直接用,只是跑评测产生的 Runs / Annotations 会**只存在到下次重启**,
-需要触发一次 `POST /api/admin/persistence/push` 才会被推到 Dataset。
+普通业务 API 可以直接使用；管理写接口需要 `X-Admin-Token`。
+Runs / Annotations 会由后台线程定期同步到 Dataset，也可以在必要时手动触发一次
+`POST /api/admin/persistence/push`。
 
 ## 4. 持久化运维速查
 
@@ -125,10 +127,10 @@ SPACE="https://<NAMESPACE>-fin-evalops-backend.hf.space"
 curl -fsS "$SPACE/api/admin/persistence" | jq '.dirty'
 
 # 强制立即推送(忽略 dirty 标记)
-curl -X POST "$SPACE/api/admin/persistence/push" | jq
+curl -X POST -H "X-Admin-Token: $ADMIN_API_TOKEN" "$SPACE/api/admin/persistence/push" | jq
 
 # ⚠️ 危险:强制从 HF 拉取,会覆盖本地 DB(适合灾难恢复)
-curl -X POST "$SPACE/api/admin/persistence/pull" | jq
+curl -X POST -H "X-Admin-Token: $ADMIN_API_TOKEN" "$SPACE/api/admin/persistence/pull" | jq
 ```
 
 后台推送线程默认 5 分钟一次。要更短/更长:

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Card,
@@ -34,18 +33,15 @@ export default function RunDetail() {
   const { data, isLoading, mutate } = useSWR(
     id ? `/api/runs/${id}` : null,
     () => runsApi.get(id),
-    { refreshInterval: 2_000, revalidateOnFocus: true }
+    {
+      refreshInterval: (latest) =>
+        latest && ["pending", "routing", "running", "scoring"].includes(latest.status)
+          ? 2_000
+          : 0,
+      revalidateOnFocus: true,
+    }
   );
   const isLive = data && ["pending", "routing", "running", "scoring"].includes(data.status);
-
-  // Stop polling once done
-  useEffect(() => {
-    if (data && !isLive) {
-      // single refresh after a moment so post-completion state is reflected
-      const t = setTimeout(() => mutate(), 500);
-      return () => clearTimeout(t);
-    }
-  }, [isLive]);
 
   const { data: testcase } = useSWR(
     data?.testcase_id ? `/api/testsets/${data.testcase_id}` : null,
@@ -110,7 +106,7 @@ export default function RunDetail() {
         )}
 
         <Row gutter={16}>
-          <Col span={6}>
+          <Col xs={24} sm={12} xl={6}>
             <Statistic
               title="最终分"
               value={data.final_score ?? "—"}
@@ -119,21 +115,21 @@ export default function RunDetail() {
               suffix={band?.label}
             />
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} xl={6}>
             <Statistic
               title="未封顶加权"
               value={data.absolute_score_pre_cap ?? "—"}
               precision={2}
             />
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} xl={6}>
             <Statistic
               title="Latency"
               value={data.latency_ms != null ? (data.latency_ms / 1000).toFixed(2) : "—"}
               suffix="s"
             />
           </Col>
-          <Col span={6}>
+          <Col xs={24} sm={12} xl={6}>
             <Statistic
               title="Tokens (in/out)"
               value={`${data.tokens_in ?? "—"} / ${data.tokens_out ?? "—"}`}
@@ -169,7 +165,7 @@ export default function RunDetail() {
               label: "评分明细",
               children: (
                 <Row gutter={16}>
-                  <Col span={10}>
+                  <Col xs={24} xl={10}>
                     <Card type="inner" size="small" title="维度雷达">
                       {dims.length > 0 ? (
                         <ScoreRadar dimensions={dims} height={360} modelLabel={data.judge_model} />
@@ -178,7 +174,7 @@ export default function RunDetail() {
                       )}
                     </Card>
                   </Col>
-                  <Col span={14}>
+                  <Col xs={24} xl={14}>
                     <Card type="inner" size="small" title="维度详情">
                       <DimensionTable
                         weight_assignment={data.weight_assignment}
@@ -218,7 +214,7 @@ export default function RunDetail() {
                         <Card type="inner" size="small" title="问题">
                           <MarkdownView text={testcase.question} />
                         </Card>
-                        <Card type="inner" size="small" title="期望答案">
+                        <Card type="inner" size="small" title="Agent 回答">
                           <MarkdownView text={testcase.agent_answer} />
                         </Card>
                       </Space>
@@ -284,12 +280,12 @@ function NarrativeView({ review }: { review?: any }) {
         </Card>
       )}
       <Row gutter={16}>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card type="inner" size="small" title="✅ 强项">
             <ul>{(review.strengths || []).map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} lg={12}>
           <Card type="inner" size="small" title="⚠ 弱项">
             <ul>{(review.weaknesses || []).map((s: string, i: number) => <li key={i}>{s}</li>)}</ul>
           </Card>

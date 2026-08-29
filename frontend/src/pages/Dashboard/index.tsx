@@ -51,7 +51,7 @@ export default function Dashboard() {
       radius: "65%",
       splitArea: { areaStyle: { color: ["#f5faff", "#ffffff"] } },
       axisLabel: { fontSize: 10, color: "#666" },
-      name: { textStyle: { fontSize: 11 } },
+      axisName: { fontSize: 11, color: "#6e6e73" },
     },
     series: [{
       type: "radar",
@@ -115,20 +115,20 @@ export default function Dashboard() {
         />
       )}
 
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} xl={6}>
           <Card>
             <Statistic title="测试样本总数" value={summary?.total_testcases ?? "—"}
               prefix={<DatabaseOutlined />} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} xl={6}>
           <Card>
             <Statistic title="已完成评测" value={summary?.total_runs ?? "—"}
               prefix={<PlayCircleOutlined />} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} xl={6}>
           <Card>
             <Statistic
               title="平均分"
@@ -144,7 +144,7 @@ export default function Dashboard() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} xl={6}>
           <Card>
             <Statistic
               title="通过率 (≥60)"
@@ -160,17 +160,17 @@ export default function Dashboard() {
         </Col>
       </Row>
 
-      <Row gutter={16}>
-        <Col span={12}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={12}>
           <Card title="13 类 Skill 覆盖均分">
-            {coverage && coverage.length > 0 ? (
+            {coverage && coverage.some((item) => item.count > 0) ? (
               <ReactECharts option={radarOption} style={{ height: 380 }} notMerge />
             ) : (
               <Empty description="尚无评测数据 — 请到 Runs 页面创建第一个评测" />
             )}
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} xl={12}>
           <Card title="L1 根因分布">
             {l1Data.length > 0 ? (
               <ReactECharts option={l1Option} style={{ height: 380 }} notMerge />

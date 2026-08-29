@@ -112,12 +112,21 @@ def list_models() -> List[dict]:
 
 
 def resolve_model(model_id: Optional[str]) -> ModelSpec:
-    """Pick a model: explicit > default > first available (live env read)."""
-    if model_id and model_id in MODELS:
+    """Pick a model: explicit > default > first available (live env read).
+
+    An explicit choice is a user decision and must never silently fall back to
+    a different provider: that makes A/B results mislabeled and irreproducible.
+    """
+    if model_id:
+        if model_id not in MODELS:
+            raise ValueError(f"Unknown model: {model_id}")
         spec = MODELS[model_id]
-        if getattr(settings, f"{spec.provider}_api_key_live", ""):
-            return spec
-        log.warning("Requested model %s but its provider key is missing, falling back", model_id)
+        if not getattr(settings, f"{spec.provider}_api_key_live", ""):
+            raise RuntimeError(
+                f"Model {model_id} is unavailable because provider "
+                f"{spec.provider} is not configured"
+            )
+        return spec
     default_id = settings.default_judge_model_live
     default = MODELS.get(default_id)
     if default and getattr(settings, f"{default.provider}_api_key_live", ""):

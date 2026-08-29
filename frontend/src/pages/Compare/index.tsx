@@ -26,43 +26,39 @@ export default function Compare() {
     };
   });
 
-  const dimsOf = (d: any) => Object.entries(d?.dimension_scores || {})
-    .filter(([k]) => (d?.weight_assignment || {})[k]?.applicability !== "not_applicable")
-    .map(([k, v]: [string, any]) => ({ key: k, label: k, score: v.raw_score ?? 0 }));
-
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Alert
         type="info"
         showIcon
-        message="Run 对比 (P1)"
-        description="并排查看两次评测,差异维度高亮。建议选择同 Skill 的不同 Judge Model,或同 TestCase 不同时刻的 Run。"
+        message="结果对比"
+        description="并排查看两次评测并高亮差异。为确保维度可比，优先选择相同 Skill 的不同模型或不同时间版本。"
       />
-      <Row gutter={16}>
-        <Col span={12}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={12}>
           <Card title="Run A" extra={
             <Select
               showSearch
               filterOption={(input, opt) => (opt?.label as string)?.includes(input)}
               placeholder="选 Run A"
-              style={{ width: 360 }}
+              className="run-compare-select"
               value={runA}
-              options={options}
+              options={options.map((option) => ({ ...option, disabled: option.value === runB }))}
               onChange={setRunA}
             />
           }>
             {detailA.data ? <RunPanel data={detailA.data} /> : <Empty />}
           </Card>
         </Col>
-        <Col span={12}>
+        <Col xs={24} xl={12}>
           <Card title="Run B" extra={
             <Select
               showSearch
               filterOption={(input, opt) => (opt?.label as string)?.includes(input)}
               placeholder="选 Run B"
-              style={{ width: 360 }}
+              className="run-compare-select"
               value={runB}
-              options={options}
+              options={options.map((option) => ({ ...option, disabled: option.value === runA }))}
               onChange={setRunB}
             />
           }>
@@ -73,6 +69,14 @@ export default function Compare() {
 
       {detailA.data && detailB.data && (
         <Card title="差异">
+          {detailA.data.skill_id !== detailB.data.skill_id && (
+            <Alert
+              type="warning"
+              showIcon
+              message="两次评测使用了不同 Skill，维度差异只能作为参考"
+              style={{ marginBottom: 16 }}
+            />
+          )}
           <DiffSummary a={detailA.data} b={detailB.data} />
         </Card>
       )}

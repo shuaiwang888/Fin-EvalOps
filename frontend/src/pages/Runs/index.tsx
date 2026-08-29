@@ -27,7 +27,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import useSWR from "swr";
 import dayjs from "dayjs";
 
-import { runsApi, routeApi } from "../../api/runs";
+import { modelsApi, runsApi, routeApi } from "../../api/runs";
 import { testsetsApi } from "../../api/testsets";
 import { skillsApi } from "../../api/skills";
 import ModelPicker from "../../components/ModelPicker";
@@ -49,10 +49,12 @@ export default function Runs() {
   const [search] = useSearchParams();
   const presetTcId = search.get("testcase_id") || undefined;
   const presetSkillHint = search.get("skill_hint") || undefined;
+  const presetBatchId = search.get("batch_id") || undefined;
 
   const [filters, setFilters] = useState<any>({
     page: 1, page_size: 20,
     testcase_id: presetTcId,
+    batch_id: presetBatchId,
     sort: "created_at",
     order: "desc",
   });
@@ -110,7 +112,7 @@ export default function Runs() {
       <Card
         title={`评测 Runs(${data?.total ?? 0})`}
         extra={
-          <Space>
+          <Space wrap>
             <Button icon={<ReloadOutlined />} onClick={() => mutate()} />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreate(true)}>
               新建评测
@@ -345,6 +347,7 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
   const navigate = useNavigate();
   const [mode, setMode] = useState<"single" | "batch">("single");
   const [tcId, setTcId] = useState<string | undefined>(presetTcId);
+  const [batchTcIds, setBatchTcIds] = useState<string[]>([]);
   const [routePreview, setRoutePreview] = useState<RouteResponse | null>(null);
   const [skillStrategy, setSkillStrategy] = useState<"auto" | "manual">("auto");
 
@@ -354,6 +357,7 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
   );
   const { data: skills } = useSWR(open ? "/api/skills?family=self" : null,
     () => skillsApi.list("self"));
+  const { data: availableModels } = useSWR(open ? "/api/models" : null, modelsApi.list);
 
   const tcDetail = useSWR(tcId ? `/api/testsets/${tcId}` : null,
     () => testsetsApi.get(tcId!));
@@ -364,7 +368,7 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
       form.setFieldValue("skill_id", presetSkillHint);
       setSkillStrategy("manual");
     }
-  }, [open]);
+  }, [form, open, presetSkillHint, presetTcId]);
 
   const previewRoute = async () => {
     if (!tcDetail.data) return;
@@ -385,9 +389,9 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
       onClose();
       navigate(`/runs/${r.id}`);
     } else {
-      const ids = (testcases?.items || []).map((t) => t.id);
+      if (batchTcIds.length === 0) { message.warning("请至少选择一个样本"); return; }
       const r = await runsApi.createBatch({
-        testcase_ids: ids,
+        testcase_ids: batchTcIds,
         skill_strategy: skillStrategy,
         skill_id: skillStrategy === "manual" ? v.skill_id : undefined,
         judge_model: v.judge_model,
@@ -411,11 +415,21 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
       onOk={submit}
       width={720}
       okText="开始评测"
+      okButtonProps={{ disabled: (availableModels?.length ?? 0) === 0 }}
     >
+      {(availableModels?.length ?? 0) === 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          message="没有可用的 Judge 模型"
+          description="请先到「系统状态」确认后端已配置 LLM Provider。"
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <Radio.Group value={mode} onChange={(e) => setMode(e.target.value)}
         style={{ marginBottom: 16 }}>
         <Radio.Button value="single">单条</Radio.Button>
-        <Radio.Button value="batch">批量(全部已加载样本)</Radio.Button>
+        <Radio.Button value="batch">批量</Radio.Button>
       </Radio.Group>
 
       <Form form={form} layout="vertical">
@@ -434,6 +448,26 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
                 label: `[${t.category_code}] ${t.question.slice(0, 60)}`,
               }))}
               style={{ width: "100%" }}
+            />
+          </Form.Item>
+        )}
+
+        {mode === "batch" && (
+          <Form.Item label="选择测试样本" required>
+            <Select
+              mode="multiple"
+              showSearch
+              maxTagCount="responsive"
+              placeholder="搜索并选择要评测的样本"
+              value={batchTcIds}
+              onChange={setBatchTcIds}
+              filterOption={(input, opt) =>
+                (opt?.label as string)?.toLowerCase().includes(input.toLowerCase())
+              }
+              options={(testcases?.items || []).map((t) => ({
+                value: t.id,
+                label: `[${t.category_code}] ${t.question.slice(0, 70)}`,
+              }))}
             />
           </Form.Item>
         )}
@@ -501,8 +535,8 @@ function CreateRunModal({ open, onClose, presetTcId, presetSkillHint }:
           <Alert
             type="info"
             showIcon
-            message={`将对当前列表加载到的 ${testcases?.items.length || 0} 条样本执行评测`}
-            description="如需筛选请先到「测试集」页面缩小范围"
+            message={`已选择 ${batchTcIds.length} 条样本`}
+            description="仅提交上方明确选中的样本；如需按分类批量操作，可在「测试集」页筛选后勾选。"
           />
         )}
       </Form>

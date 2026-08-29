@@ -50,6 +50,8 @@ backend/data/backups/
 .coverage
 htmlcov/
 coverage.xml
+output/playwright/
+.playwright-cli/
 
 # Don't commit the original HTML zips' extracted contents accidentally
 *.html.bak
